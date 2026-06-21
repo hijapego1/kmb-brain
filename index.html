@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KMB Brain">
+<meta name="theme-color" content="#A62F22">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%23C0392B'/%3E%3Ctext x='50%25' y='62%25' font-size='110' text-anchor='middle' fill='white' font-family='Arial'%3E%F0%9F%9A%8C%3C/text%3E%3C/svg%3E">
+<title>KMB Brain — HK Bus Planner</title>
+<style>
+  :root{
+    --kmb:#C0392B; --kmb-dark:#97291E; --ink:#1f2329; --muted:#6b7280;
+    --bg:#f5f6f8; --card:#ffffff; --line:#e6e8eb; --green:#0a8f4d; --amber:#c2780c;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg); color:var(--ink);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  header{
+    background:linear-gradient(180deg,#B5342A 0%,#9E2A20 100%); color:#fff;
+    padding:calc(env(safe-area-inset-top) + 14px) 18px 14px;
+    position:sticky; top:0; z-index:20;
+  }
+  header h1{margin:0; font-size:19px; font-weight:800; letter-spacing:.2px}
+  header p{margin:2px 0 0; font-size:12px; opacity:.9}
+  .wrap{max-width:560px; margin:0 auto; padding:14px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px; margin-bottom:14px}
+  .field{position:relative; margin-bottom:10px}
+  .field label{display:block; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin:0 0 5px 4px}
+  .row{display:flex; gap:8px}
+  input[type=text]{
+    width:100%; padding:13px 12px; font-size:16px; border:1.5px solid var(--line);
+    border-radius:12px; background:#fff; color:var(--ink); outline:none;
+  }
+  input[type=text]:focus{border-color:var(--kmb)}
+  .gps{
+    flex:0 0 auto; padding:0 14px; border:1.5px solid var(--line); border-radius:12px;
+    background:#fff; font-size:18px; cursor:pointer;
+  }
+  .suggest{
+    position:absolute; top:100%; left:0; right:0; z-index:30; background:#fff;
+    border:1px solid var(--line); border-radius:12px; margin-top:4px; overflow:hidden;
+    box-shadow:0 8px 24px rgba(0,0,0,.12); display:none; max-height:260px; overflow-y:auto;
+  }
+  .suggest.show{display:block}
+  .sg{padding:11px 13px; font-size:14px; border-bottom:1px solid var(--line); cursor:pointer; display:flex; gap:9px; align-items:center}
+  .sg:last-child{border-bottom:none}
+  .sg:active{background:#fde8e7}
+  .sg .ic{font-size:16px}
+  .sg .sub{color:var(--muted); font-size:12px}
+  .swap{display:flex; justify-content:center; margin:-4px 0 6px}
+  .swap button{background:none;border:none;font-size:18px;color:var(--muted);cursor:pointer}
+  .go{
+    width:100%; padding:15px; font-size:16px; font-weight:800; color:#fff;
+    background:var(--kmb); border:none; border-radius:12px; cursor:pointer; margin-top:4px;
+  }
+  .go:active{background:var(--kmb-dark)}
+  .go:disabled{opacity:.5}
+  .status{font-size:13px; color:var(--muted); padding:6px 4px; text-align:center}
+  .err{color:var(--kmb); font-weight:600}
+  .opt{background:var(--card); border:1px solid var(--line); border-radius:16px; margin-bottom:12px; overflow:hidden}
+  .opt-head{display:flex; align-items:center; gap:10px; padding:13px 14px; border-bottom:1px solid var(--line)}
+  .badge{font-size:11px; font-weight:800; padding:3px 9px; border-radius:999px; background:#eef1f4; color:#374151}
+  .badge.direct{background:#e6f6ec; color:var(--green)}
+  .badge.xfer{background:#fef3e2; color:var(--amber)}
+  .opt-head .time{font-size:20px; font-weight:800; margin-left:auto}
+  .opt-head .time small{font-size:12px; font-weight:600; color:var(--muted)}
+  .legs{padding:6px 14px 14px}
+  .leg{display:flex; gap:11px; padding:9px 0}
+  .leg .rail{display:flex; flex-direction:column; align-items:center; width:30px; flex:0 0 30px}
+  .dot{width:12px; height:12px; border-radius:50%; border:3px solid var(--kmb); background:#fff}
+  .dot.walk{border-color:var(--muted)}
+  .line{flex:1 0 auto; width:3px; background:var(--line); margin:2px 0; min-height:14px}
+  .leg .body{flex:1; padding-top:-2px}
+  .leg .title{font-size:14px; font-weight:700}
+  .leg .rt{display:inline-block; background:var(--kmb); color:#fff; font-weight:800; font-size:13px; padding:1px 8px; border-radius:6px; margin-right:6px}
+  .leg .meta{font-size:12.5px; color:var(--muted); margin-top:2px}
+  .eta{font-weight:700}
+  .eta.soon{color:var(--kmb)} .eta.ok{color:var(--green)} .eta.none{color:var(--muted)}
+  .pill{display:inline-block; font-size:11px; background:#eef1f4; color:#374151; padding:1px 7px; border-radius:999px; margin-left:6px}
+  .footer{font-size:11px; color:var(--muted); text-align:center; padding:6px 14px 24px; line-height:1.5}
+  .footer a{color:var(--kmb)}
+  .spin{display:inline-block; width:15px; height:15px; border:2.5px solid #ddd; border-top-color:var(--kmb); border-radius:50%; animation:s .8s linear infinite; vertical-align:-3px; margin-right:6px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .progress{height:6px; background:var(--line); border-radius:6px; overflow:hidden; margin:8px 0}
+  .progress > i{display:block; height:100%; background:var(--kmb); width:0%; transition:width .3s}
+  .hint{font-size:12px;color:var(--muted);margin:2px 4px 0}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap" style="padding:0">
+    <h1>🚌 KMB Brain</h1>
+    <p>HK bus route planner · live KMB ETA · Phase 1+2</p>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="card" id="searchCard">
+    <div class="field">
+      <label>From</label>
+      <div class="row">
+        <input type="text" id="fromIn" placeholder="Sai Kung, or 📍 use my location" autocomplete="off">
+        <button class="gps" id="gpsBtn" title="Use my location">📍</button>
+      </div>
+      <div class="suggest" id="fromSg"></div>
+    </div>
+    <div class="swap"><button id="swapBtn" title="Swap">⇅</button></div>
+    <div class="field">
+      <label>To</label>
+      <input type="text" id="toIn" placeholder="TST, Mong Kok, a stop name…" autocomplete="off">
+      <div class="suggest" id="toSg"></div>
+    </div>
+    <button class="go" id="goBtn">Plan my trip</button>
+    <div class="hint" id="resolveHint"></div>
+  </div>
+
+  <div id="status" class="status"></div>
+  <div id="results"></div>
+
+  <div class="footer">
+    Data: <a href="https://data.gov.hk/en-data/dataset/hk-td-tis_21-etakmb" target="_blank">KMB open data (Transport Dept)</a>.
+    Times are estimates; ETA is live. KMB / Long Win only · max 1 transfer (MVP).
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   KMB Brain — Phase 1 (planner) + Phase 2 (live ETA)
+   Pure client-side. Calls KMB open-data API from the browser.
+   ============================================================ */
+const GOV = "https://data.etabus.gov.hk"; // upstream KMB open data
+const KMB = "/v1/transport/kmb";          // path prefix on the gov API
+
+// ---- tunables (the "feel" of the planner) ----
+const WALK_MPM   = 80;    // walking speed, metres/minute (~4.8 km/h)
+const MAX_WALK   = 800;   // max metres to a boarding/alighting stop
+const NEAR_N     = 6;     // how many candidate stops per end
+const MIN_PER_STOP = 1.8; // estimated minutes of riding per stop
+const ASSUMED_WAIT = 6;   // assumed wait (min) before we have live ETA
+const MAX_ROUTES_PER_END = 60; // cap to keep transfer search snappy
+const TOP_SHOW   = 3;     // options to display
+const TOP_ETA    = 6;     // options to fetch live ETA for
+
+// ---- HK landmark gazetteer (district -> centre coords) ----
+const GAZ = {
+  "tst":[22.2976,114.1722],"tsim sha tsui":[22.2976,114.1722],
+  "sai kung":[22.3815,114.2705],"mong kok":[22.3193,114.1694],"mongkok":[22.3193,114.1694],
+  "central":[22.2820,114.1588],"causeway bay":[22.2800,114.1850],"cwb":[22.2800,114.1850],
+  "kwun tong":[22.3120,114.2260],"sha tin":[22.3820,114.1880],"shatin":[22.3820,114.1880],
+  "diamond hill":[22.3400,114.2010],"choi hung":[22.3350,114.2090],"kowloon tong":[22.3370,114.1760],
+  "tsuen wan":[22.3710,114.1140],"yuen long":[22.4445,114.0220],"tuen mun":[22.3910,113.9770],
+  "hung hom":[22.3030,114.1820],"wong tai sin":[22.3420,114.1940],"lok fu":[22.3380,114.1870],
+  "kowloon bay":[22.3230,114.2130],"ngau tau kok":[22.3150,114.2190],"lam tin":[22.3070,114.2360],
+  "tseung kwan o":[22.3080,114.2600],"tko":[22.3080,114.2600],"po lam":[22.3220,114.2580],
+  "hang hau":[22.3160,114.2640],"airport":[22.3160,113.9360],"tin shui wai":[22.4580,114.0040],
+  "sham shui po":[22.3300,114.1620],"prince edward":[22.3250,114.1685],"jordan":[22.3050,114.1715],
+  "yau ma tei":[22.3130,114.1705],"north point":[22.2910,114.2000],"wan chai":[22.2790,114.1730],
+  "admiralty":[22.2790,114.1645],"kennedy town":[22.2810,114.1290],"aberdeen":[22.2480,114.1550],
+  "kwai chung":[22.3570,114.1310],"kwai fong":[22.3570,114.1280],"tai po":[22.4510,114.1640],
+  "fanling":[22.4920,114.1390],"sheung shui":[22.5010,114.1280],"ma on shan":[22.4250,114.2310],
+  "lai chi kok":[22.3370,114.1480],"cheung sha wan":[22.3360,114.1560],"to kwa wan":[22.3170,114.1880],
+  "kowloon station":[22.3040,114.1610],"west kowloon":[22.3040,114.1610],"olympic":[22.3175,114.1605],
+  "tai kok tsui":[22.3240,114.1610],"clear water bay":[22.2840,114.2980],
+};
+
+// ---- state ----
+let stops = new Map();        // stopId -> {name,nameTc,lat,lng}
+let routeStopList = new Map();// rk -> [stopId,...] (in seq order)
+let routeSeq = new Map();     // rk -> Map(stopId -> index)
+let stopRoutes = new Map();   // stopId -> Set(rk)
+let routeMeta = new Map();    // rk -> {route,bound,st,orig,dest}
+let ready = false;
+let fromSel = null, toSel = null; // {lat,lng,label}
+
+// rk helpers
+const mkRk = (route,bound,st) => route+"|"+bound+"|"+st;
+const rkParts = rk => { const p = rk.split("|"); return {route:p[0],bound:p[1],st:p[2]}; };
+const dirWord = b => b==="I" ? "inbound" : "outbound";
+
+// ---- geo ----
+function haversine(aLat,aLng,bLat,bLng){
+  const R=6371000, toR=Math.PI/180;
+  const dLat=(bLat-aLat)*toR, dLng=(bLng-aLng)*toR;
+  const s=Math.sin(dLat/2)**2 + Math.cos(aLat*toR)*Math.cos(bLat*toR)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+
+// ============================================================
+//  DATA LOADING + INDEX BUILD (cached in IndexedDB, daily)
+// ============================================================
+const DB="kmbbrain", STORE="kv";
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,1);
+  r.onupgradeneeded=()=>r.result.createObjectStore(STORE);
+  r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);});}
+async function idbGet(k){try{const db=await idb();return await new Promise((res,rej)=>{
+  const t=db.transaction(STORE).objectStore(STORE).get(k);t.onsuccess=()=>res(t.result);t.onerror=()=>rej(t.error);});}catch(e){return null;}}
+async function idbSet(k,v){try{const db=await idb();return await new Promise((res,rej)=>{
+  const t=db.transaction(STORE,"readwrite").objectStore(STORE).put(v,k);t.onsuccess=()=>res();t.onerror=()=>rej(t.error);});}catch(e){}}
+
+function hkToday(){
+  // YYYY-MM-DD in Hong Kong time
+  return new Date(Date.now()+8*3600*1000).toISOString().slice(0,10);
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function fetchOnce(u, ms){
+  return new Promise((resolve,reject)=>{
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(), ms||35000);
+    fetch(u,{signal:ctrl.signal, cache:"no-store"})
+      .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+      .then(d=>{ clearTimeout(t); resolve(d); })
+      .catch(e=>{ clearTimeout(t); reject(e); });
+  });
+}
+// Ways to reach a KMB gov path, best -> last resort:
+//  1. same-origin proxy  /api/kmb?path=...  (server-side; only exists on Vercel) — reliable, no CORS, cached
+//  2. direct to gov                          — works only if gov allows browser CORS
+//  3. public CORS proxies                    — last resort, can be rate-limited
+function urlBuilders(path){
+  const direct = GOV + path;
+  return [
+    "/api/kmb?path=" + encodeURIComponent(path),
+    direct,
+    "https://corsproxy.io/?url=" + encodeURIComponent(direct),
+    "https://api.allorigins.win/raw?url=" + encodeURIComponent(direct),
+  ];
+}
+async function fetchKmb(path, label){
+  const urls = urlBuilders(path);
+  let lastErr;
+  for(let i=0;i<urls.length;i++){
+    try{ const d = await fetchOnce(urls[i]); if(d) return d; }
+    catch(e){ lastErr=e; if(i<urls.length-1) await sleep(300); }
+  }
+  throw new Error((label||"data")+": "+((lastErr&&lastErr.message)||"network/CORS blocked"));
+}
+
+function buildIndexes(rawStops, rawRouteStops, rawRoutes){
+  stops.clear(); routeStopList.clear(); routeSeq.clear(); stopRoutes.clear(); routeMeta.clear();
+  for(const s of rawStops){
+    stops.set(s.stop, {name:s.name_en, nameTc:s.name_tc, lat:+s.lat, lng:+s.long});
+  }
+  for(const r of rawRoutes){
+    routeMeta.set(mkRk(r.route, r.bound, String(r.service_type)),
+      {route:r.route, bound:r.bound, st:String(r.service_type), orig:r.orig_en, dest:r.dest_en});
+  }
+  // route-stop comes pre-sorted by route/bound/seq but we sort to be safe
+  const tmp = new Map();
+  for(const rs of rawRouteStops){
+    const rk = mkRk(rs.route, rs.bound, String(rs.service_type));
+    if(!tmp.has(rk)) tmp.set(rk, []);
+    tmp.get(rk).push({stop:rs.stop, seq:+rs.seq});
+  }
+  for(const [rk, arr] of tmp){
+    arr.sort((a,b)=>a.seq-b.seq);
+    const list = arr.map(x=>x.stop);
+    routeStopList.set(rk, list);
+    const sm = new Map();
+    list.forEach((sid,i)=>{ sm.set(sid,i);
+      if(!stopRoutes.has(sid)) stopRoutes.set(sid,new Set());
+      stopRoutes.get(sid).add(rk);
+    });
+    routeSeq.set(rk, sm);
+  }
+}
+
+async function ensureData(onProg){
+  const meta = await idbGet("meta");
+  if(meta && meta.date === hkToday() && meta.v === 3){
+    onProg("Loading cached KMB data…", 40);
+    const [rs,rss,rr] = await Promise.all([idbGet("stops"),idbGet("routeStops"),idbGet("routes")]);
+    if(rs && rss && rr){ buildIndexes(rs,rss,rr); onProg("",100); ready=true; return; }
+  }
+  onProg("Downloading KMB stops…", 15);
+  const sJson = await fetchKmb(KMB+"/stop", "stops list");
+  await sleep(250);
+  onProg("Downloading KMB routes…", 35);
+  const rJson = await fetchKmb(KMB+"/route", "routes list");
+  await sleep(250);
+  onProg("Downloading route map (one-time, biggest file)…", 55);
+  const rsJson = await fetchKmb(KMB+"/route-stop", "route-stop map");
+  onProg("Building the KMB brain…", 80);
+  buildIndexes(sJson.data, rsJson.data, rJson.data);
+  // cache raw
+  idbSet("stops", sJson.data); idbSet("routes", rJson.data);
+  idbSet("routeStops", rsJson.data); idbSet("meta",{date:hkToday(), v:3});
+  onProg("",100); ready=true;
+}
+
+// ============================================================
+//  RESOLVE TEXT -> COORDS  (gazetteer + stop-name search)
+// ============================================================
+function resolveText(text){
+  const q = text.trim().toLowerCase();
+  if(!q) return null;
+  if(GAZ[q]) return {lat:GAZ[q][0], lng:GAZ[q][1], label:title(text)};
+  // partial gazetteer
+  for(const k in GAZ){ if(k.startsWith(q) || q.startsWith(k)) return {lat:GAZ[k][0],lng:GAZ[k][1],label:title(k)}; }
+  // stop-name search: average the matching stops' coords (cluster centre)
+  const m=[]; for(const [id,s] of stops){ if(s.name.toLowerCase().includes(q)) m.push(s); if(m.length>=8) break; }
+  if(m.length){
+    const lat=m.reduce((a,s)=>a+s.lat,0)/m.length, lng=m.reduce((a,s)=>a+s.lng,0)/m.length;
+    return {lat,lng,label:m[0].name};
+  }
+  return null;
+}
+function title(s){return s.replace(/\b\w/g,c=>c.toUpperCase());}
+
+// suggestions: gazetteer + top stop names
+function suggestList(text){
+  const q=text.trim().toLowerCase(); if(q.length<1) return [];
+  const out=[];
+  for(const k in GAZ){ if(k.includes(q)){ out.push({ic:"📍",label:title(k),sub:"District",lat:GAZ[k][0],lng:GAZ[k][1]}); } if(out.length>=5)break; }
+  if(ready){
+    for(const [id,s] of stops){
+      if(s.name.toLowerCase().includes(q)){ out.push({ic:"🚏",label:s.name,sub:"KMB stop · "+s.nameTc,lat:s.lat,lng:s.lng}); }
+      if(out.length>=9) break;
+    }
+  }
+  return out.slice(0,9);
+}
+
+// ============================================================
+//  NEAREST STOPS
+// ============================================================
+function nearestStops(lat,lng,maxM,n){
+  const arr=[];
+  for(const [id,s] of stops){
+    const d=haversine(lat,lng,s.lat,s.lng);
+    if(d<=maxM) arr.push({stopId:id, dist:d});
+  }
+  arr.sort((a,b)=>a.dist-b.dist);
+  return arr.slice(0,n);
+}
+
+// ============================================================
+//  ROUTE SEARCH  (direct + 1-transfer, same-stop interchange)
+// ============================================================
+function routesForStops(cands){ // Map rk -> {stopId,dist,seq} best (closest) per route
+  const m=new Map();
+  for(const c of cands){
+    const set=stopRoutes.get(c.stopId); if(!set) continue;
+    for(const rk of set){
+      const seq=routeSeq.get(rk).get(c.stopId);
+      const prev=m.get(rk);
+      if(!prev || c.dist<prev.dist) m.set(rk,{stopId:c.stopId,dist:c.dist,seq});
+    }
+  }
+  return m;
+}
+
+function plan(originLL, destLL){
+  const oCands = nearestStops(originLL.lat,originLL.lng,MAX_WALK,NEAR_N);
+  const dCands = nearestStops(destLL.lat,destLL.lng,MAX_WALK,NEAR_N);
+  if(!oCands.length) return {error:"No KMB stop within "+MAX_WALK+"m of your start point."};
+  if(!dCands.length) return {error:"No KMB stop within "+MAX_WALK+"m of your destination."};
+
+  // map of all (rk -> best orig stop) and (rk -> best dest stop); but a route may pass
+  // multiple candidate stops, and we need orig.seq < dest.seq, so keep full lists.
+  const oByRoute=multiRouteStops(oCands), dByRoute=multiRouteStops(dCands);
+
+  const options=[];
+
+  // ---- DIRECT ----
+  for(const [rk, oList] of oByRoute){
+    const dList=dByRoute.get(rk); if(!dList) continue;
+    let best=null;
+    for(const o of oList) for(const d of dList){
+      if(o.seq < d.seq){
+        const nStops=d.seq-o.seq;
+        const cost=o.dist + d.dist + nStops*MIN_PER_STOP*WALK_MPM; // metres-equivalent for picking
+        if(!best || cost<best.cost) best={o,d,nStops,cost};
+      }
+    }
+    if(best){
+      options.push({type:"direct", legs:[
+        {kind:"bus", rk, board:best.o.stopId, alight:best.d.stopId, nStops:best.nStops, walkBoard:best.o.dist, walkAlight:best.d.dist}
+      ]});
+    }
+  }
+
+  // ---- 1 TRANSFER (same interchange stop) ----
+  const oRoutes=[...oByRoute.entries()].slice(0,MAX_ROUTES_PER_END);
+  const dRoutes=[...dByRoute.entries()].slice(0,MAX_ROUTES_PER_END);
+  // routes that already connect origin->dest directly: any transfer that re-uses
+  // one of these as a leg is dominated (you'd just take that bus the whole way).
+  const directRoutes=new Set(options.map(o=>rkParts(o.legs[0].rk).route));
+  for(const [rk1,oList] of oRoutes){
+    const r1info=rkParts(rk1);
+    if(directRoutes.has(r1info.route)) continue; // 1st leg route is already direct
+    const o=oList.reduce((a,b)=>a.seq<b.seq?a:b); // earliest boarding -> most reachable interchanges
+    const list1=routeStopList.get(rk1);
+    for(const [rk2,dList] of dRoutes){
+      const r2info=rkParts(rk2);
+      if(r1info.route===r2info.route) continue;
+      if(directRoutes.has(r2info.route)) continue; // 2nd leg route is already direct
+      const seq2=routeSeq.get(rk2);
+      const d=dList.reduce((a,b)=>a.dist<b.dist?a:b);
+      // find best interchange X on rk1 (after o.seq) that rk2 serves (before d.seq)
+      let bestX=null;
+      for(let i=o.seq+1;i<list1.length;i++){
+        const X=list1[i];
+        if(seq2.has(X)){
+          const jx=seq2.get(X);
+          if(jx < d.seq){
+            const n1=i-o.seq, n2=d.seq-jx, tot=n1+n2;
+            if(!bestX || tot<bestX.tot) bestX={X,jx,n1,n2,tot,i};
+          }
+        }
+      }
+      if(bestX){
+        options.push({type:"transfer", legs:[
+          {kind:"bus", rk:rk1, board:o.stopId, alight:bestX.X, nStops:bestX.n1, walkBoard:o.dist, walkAlight:0},
+          {kind:"bus", rk:rk2, board:bestX.X, alight:d.stopId, nStops:bestX.n2, walkBoard:0, walkAlight:d.dist}
+        ], xferStop:bestX.X});
+      }
+    }
+  }
+
+  if(!options.length) return {error:"No KMB route or 1-transfer combo found. Try a nearby district name."};
+  scoreAll(options);
+  options.sort((a,b)=>a.totalMin-b.totalMin);
+  // de-dup near-identical (same route sequence)
+  const seen=new Set(), uniq=[];
+  for(const o of options){
+    const sig=o.legs.map(l=>rkParts(l.rk).route).join(">");
+    if(seen.has(sig)) continue; seen.add(sig); uniq.push(o);
+  }
+  return {options:uniq};
+}
+
+function multiRouteStops(cands){ // rk -> [{stopId,dist,seq}] all candidate stops on that route
+  const m=new Map();
+  for(const c of cands){
+    const set=stopRoutes.get(c.stopId); if(!set) continue;
+    for(const rk of set){
+      const seq=routeSeq.get(rk).get(c.stopId);
+      if(!m.has(rk)) m.set(rk,[]);
+      m.get(rk).push({stopId:c.stopId,dist:c.dist,seq});
+    }
+  }
+  return m;
+}
+
+function scoreAll(options){
+  for(const o of options){
+    let walkM=0, ride=0, wait=0, nBoard=0;
+    for(const l of o.legs){
+      walkM += (l.walkBoard||0) + (l.walkAlight||0);
+      ride  += l.nStops*MIN_PER_STOP;
+      l.waitMin = (l.waitMin!=null)? l.waitMin : ASSUMED_WAIT; // may be filled by ETA
+      wait  += l.waitMin; nBoard++;
+    }
+    o.walkMin = walkM/WALK_MPM;
+    o.rideMin = ride;
+    o.waitMin = wait;
+    o.totalMin = o.walkMin + o.rideMin + o.waitMin;
+    o.nBoard = nBoard;
+  }
+}
+
+// ============================================================
+//  LIVE ETA (Phase 2) — refine waits, re-rank
+// ============================================================
+async function fetchEtaForStop(stopId){
+  try{ const j=await fetchKmb(KMB+"/stop-eta/"+stopId, "eta"); return j.data||[]; }
+  catch(e){ return []; }
+}
+function etaMinFromRows(rows, rk){
+  const {route,bound,st}=rkParts(rk);
+  const now=Date.now(); const mins=[];
+  for(const r of rows){
+    if(r.route!==route) continue;
+    if(r.dir!==bound) continue;
+    if(String(r.service_type)!==st) continue;
+    if(!r.eta) continue;
+    const m=(new Date(r.eta).getTime()-now)/60000;
+    if(m>=-1) mins.push(Math.max(0,Math.round(m)));
+  }
+  mins.sort((a,b)=>a-b);
+  return mins.slice(0,3);
+}
+async function enrichEta(options){
+  const top=options.slice(0,TOP_ETA);
+  // collect unique boarding stops
+  const need=new Set();
+  for(const o of top) for(const l of o.legs) need.add(l.board);
+  const etaMap=new Map();
+  await Promise.all([...need].map(async id=>{ etaMap.set(id, await fetchEtaForStop(id)); }));
+  for(const o of top){
+    for(const l of o.legs){
+      const arr=etaMinFromRows(etaMap.get(l.board)||[], l.rk);
+      l.etaList=arr;
+      if(arr.length) l.waitMin=arr[0];
+    }
+  }
+  scoreAll(top);
+  top.sort((a,b)=>a.totalMin-b.totalMin);
+  return top;
+}
+
+// ============================================================
+//  RENDER
+// ============================================================
+const $=id=>document.getElementById(id);
+function fmtDist(m){ return m<1000? Math.round(m)+" m" : (m/1000).toFixed(1)+" km"; }
+function walkMin(m){ return Math.max(1,Math.round(m/WALK_MPM)); }
+function etaText(arr){
+  if(!arr) return '<span class="eta none">— live in a sec</span>';
+  if(!arr.length) return '<span class="eta none">no live ETA</span>';
+  const f=arr[0];
+  const cls=f<=2?"soon":"ok";
+  const label = f===0?"now":(f+" min");
+  const rest = arr.slice(1).map(x=>x+"").join(", ");
+  return `<span class="eta ${cls}">next ${label}</span>`+(rest?` <span class="pill">then ${rest} min</span>`:"");
+}
+
+function renderOptions(options){
+  const box=$("results"); box.innerHTML="";
+  if(!options.length){ box.innerHTML='<div class="status err">No options found.</div>'; return; }
+  options.slice(0,TOP_SHOW).forEach((o,idx)=>{
+    const el=document.createElement("div"); el.className="opt";
+    const xfer=o.type==="transfer";
+    const badge = xfer? '<span class="badge xfer">1 transfer</span>' : '<span class="badge direct">Direct</span>';
+    const rank = idx===0? '<span class="badge">Best now</span>' : '';
+    let legsHtml="";
+    // start walk
+    const firstWalk=o.legs[0].walkBoard;
+    legsHtml+=legRow("walk", `Walk to ${stopName(o.legs[0].board)}`, `${walkMin(firstWalk)} min · ${fmtDist(firstWalk)}`, false);
+    o.legs.forEach((l,i)=>{
+      const {route}=rkParts(l.rk); const meta=routeMeta.get(l.rk)||{};
+      const title=`<span class="rt">${route}</span>towards ${meta.dest||"—"}`;
+      const metaLine=`${etaText(l.etaList)} · ride ~${l.nStops} stops (${Math.round(l.nStops*MIN_PER_STOP)} min)`;
+      legsHtml+=legRow("bus", title, metaLine, true);
+      if(i<o.legs.length-1){
+        legsHtml+=legRow("walk", `Transfer at ${stopName(l.alight)}`, `change here`, false);
+      }
+    });
+    const lastWalk=o.legs[o.legs.length-1].walkAlight;
+    legsHtml+=legRow("walk", `Walk to destination`, `${walkMin(lastWalk)} min · ${fmtDist(lastWalk)}`, false, true);
+
+    el.innerHTML=`
+      <div class="opt-head">${rank}${badge}
+        <span class="time">${Math.round(o.totalMin)}<small> min</small></span></div>
+      <div class="legs">${legsHtml}</div>`;
+    box.appendChild(el);
+  });
+}
+function legRow(kind,title,meta,isBus,last){
+  const dotCls=kind==="walk"?"dot walk":"dot";
+  const line=last?"":'<div class="line"></div>';
+  return `<div class="leg"><div class="rail"><div class="${dotCls}"></div>${line}</div>
+    <div class="body"><div class="title">${title}</div><div class="meta">${meta}</div></div></div>`;
+}
+function stopName(id){ const s=stops.get(id); return s? s.name : id; }
+
+// ============================================================
+//  WIRE UP UI
+// ============================================================
+function setStatus(html){ $("status").innerHTML=html; }
+
+async function init(){
+  bindSuggest($("fromIn"),$("fromSg"),s=>fromSel=s,"from");
+  bindSuggest($("toIn"),$("toSg"),s=>toSel=s,"to");
+  $("swapBtn").onclick=()=>{
+    const a=$("fromIn").value, b=$("toIn").value; $("fromIn").value=b; $("toIn").value=a;
+    const t=fromSel; fromSel=toSel; toSel=t;
+  };
+  $("gpsBtn").onclick=useGps;
+  $("goBtn").onclick=runPlan;
+
+  setStatus('<span class="spin"></span>Waking up the KMB brain…');
+  $("goBtn").disabled=true;
+  try{
+    await ensureData((msg,pct)=>{
+      if(pct>=100){ setStatus(""); return; }
+      setStatus(`<span class="spin"></span>${msg}<div class="progress"><i style="width:${pct}%"></i></div>`);
+    });
+    $("goBtn").disabled=false;
+    setStatus(`Ready · ${stops.size.toLocaleString()} stops · ${routeStopList.size.toLocaleString()} route directions loaded.`);
+  }catch(e){
+    setStatus('<span class="err">Load failed at — '+e.message+'</span><br>'+
+      '<span style="font-size:12px;color:var(--muted)">Tap reload ↻ at the top. If it keeps failing on the same step, screenshot this and send it.</span>');
+  }
+}
+
+function bindSuggest(input, box, onPick, which){
+  let t=null;
+  input.addEventListener("input",()=>{
+    if(which==="from") fromSel=null; else toSel=null;
+    clearTimeout(t);
+    t=setTimeout(()=>{
+      const list=suggestList(input.value);
+      if(!list.length){ box.classList.remove("show"); box.innerHTML=""; return; }
+      box.innerHTML=list.map((s,i)=>`<div class="sg" data-i="${i}"><span class="ic">${s.ic}</span><span><div>${s.label}</div><div class="sub">${s.sub}</div></span></div>`).join("");
+      box.classList.add("show");
+      [...box.children].forEach((ch,i)=>ch.onclick=()=>{
+        input.value=list[i].label; onPick({lat:list[i].lat,lng:list[i].lng,label:list[i].label});
+        box.classList.remove("show");
+      });
+    },120);
+  });
+  input.addEventListener("blur",()=>setTimeout(()=>box.classList.remove("show"),200));
+}
+
+function useGps(){
+  if(!navigator.geolocation){ alert("No geolocation on this device."); return; }
+  $("fromIn").value="📍 Locating…";
+  navigator.geolocation.getCurrentPosition(p=>{
+    fromSel={lat:p.coords.latitude,lng:p.coords.longitude,label:"My location"};
+    $("fromIn").value="📍 My location";
+  },err=>{
+    $("fromIn").value="";
+    alert("Location failed: "+err.message+"\n(Needs an https:// page — see the hosting note.)");
+  },{enableHighAccuracy:true,timeout:10000});
+}
+
+async function runPlan(){
+  if(!ready){ setStatus('<span class="err">Still loading data…</span>'); return; }
+  $("results").innerHTML="";
+  const from = fromSel || resolveText($("fromIn").value);
+  const to   = toSel   || resolveText($("toIn").value);
+  $("resolveHint").textContent="";
+  if(!from){ setStatus('<span class="err">Couldn\'t place your start point. Try a district like "Sai Kung" or 📍.</span>'); return; }
+  if(!to){ setStatus('<span class="err">Couldn\'t place your destination. Try a district like "TST".</span>'); return; }
+  $("resolveHint").textContent = `${from.label} → ${to.label}`;
+  setStatus('<span class="spin"></span>Searching routes…');
+
+  // compute (sync) then enrich with live ETA
+  const res = plan(from, to);
+  if(res.error){ setStatus('<span class="err">'+res.error+'</span>'); return; }
+  renderOptions(res.options);                 // instant, with assumed waits
+  setStatus('<span class="spin"></span>Getting live ETA…');
+  try{
+    const enriched = await enrichEta(res.options);
+    renderOptions(enriched);
+    setStatus(`${from.label} → ${to.label} · live ETA · ${enriched.length>=TOP_SHOW?"top "+TOP_SHOW:enriched.length} of ${res.options.length} options`);
+  }catch(e){
+    setStatus(`${from.label} → ${to.label} · (live ETA unavailable, showing estimates)`);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
