@@ -144,7 +144,8 @@ const MAX_WALK   = 800;   // max metres to a boarding/alighting stop
 const NEAR_N     = 6;     // how many candidate stops per end
 const MIN_PER_STOP = 1.8; // estimated minutes of riding per stop
 const ASSUMED_WAIT = 6;   // assumed wait (min) before we have live ETA
-const MAX_ROUTES_PER_END = 60; // cap to keep transfer search snappy
+const XFER_WALK  = 250;   // max metres to walk between two stops at an interchange
+const MAX_ROUTES_PER_END = 100; // cap to keep transfer search snappy
 const TOP_SHOW   = 3;     // options to display
 const TOP_ETA    = 6;     // options to fetch live ETA for
 
@@ -190,6 +191,27 @@ function haversine(aLat,aLng,bLat,bLng){
   const dLat=(bLat-aLat)*toR, dLng=(bLng-aLng)*toR;
   const s=Math.sin(dLat/2)**2 + Math.cos(aLat*toR)*Math.cos(bLat*toR)*Math.sin(dLng/2)**2;
   return 2*R*Math.asin(Math.sqrt(s));
+}
+
+// ---- spatial grid: bucket stops into ~275m cells so "stops near X" is fast ----
+const CELL = 0.0025; // degrees (~275m)
+let grid = new Map();
+function buildGrid(){
+  grid = new Map();
+  for(const [id,s] of stops){
+    const k = Math.floor(s.lat/CELL)+","+Math.floor(s.lng/CELL);
+    if(!grid.has(k)) grid.set(k,[]);
+    grid.get(k).push(id);
+  }
+}
+// stops within radiusM of (lat,lng): scan this cell + 8 neighbours
+function nearbyStops(lat,lng,radiusM){
+  const ci=Math.floor(lat/CELL), cj=Math.floor(lng/CELL), out=[];
+  for(let di=-1;di<=1;di++) for(let dj=-1;dj<=1;dj++){
+    const arr=grid.get((ci+di)+","+(cj+dj)); if(!arr) continue;
+    for(const id of arr){ const s=stops.get(id); const d=haversine(lat,lng,s.lat,s.lng); if(d<=radiusM) out.push({stopId:id,dist:d}); }
+  }
+  return out;
 }
 
 // ============================================================
@@ -270,6 +292,7 @@ function buildIndexes(rawStops, rawRouteStops, rawRoutes){
     });
     routeSeq.set(rk, sm);
   }
+  buildGrid(); // spatial index for nearby-stop interchanges
 }
 
 async function ensureData(onProg){
@@ -387,7 +410,7 @@ function plan(originLL, destLL){
     }
   }
 
-  // ---- 1 TRANSFER (same interchange stop) ----
+  // ---- 1 TRANSFER (interchange at the same stop OR a nearby stop ≤ XFER_WALK) ----
   const oRoutes=[...oByRoute.entries()].slice(0,MAX_ROUTES_PER_END);
   const dRoutes=[...dByRoute.entries()].slice(0,MAX_ROUTES_PER_END);
   // routes that already connect origin->dest directly: any transfer that re-uses
@@ -398,29 +421,38 @@ function plan(originLL, destLL){
     if(directRoutes.has(r1info.route)) continue; // 1st leg route is already direct
     const o=oList.reduce((a,b)=>a.seq<b.seq?a:b); // earliest boarding -> most reachable interchanges
     const list1=routeStopList.get(rk1);
+    // Build "reach": every stop you can be standing at after riding rk1 and walking ≤XFER_WALK.
+    //   reach[stopId] = { x:<alight stop on rk1>, n1:<stops ridden>, walk:<metres to this stop> }
+    const reach=new Map();
+    const maxI=Math.min(list1.length, o.seq+1+35); // look up to ~35 stops down the line
+    for(let i=o.seq+1;i<maxI;i++){
+      const X=list1[i]; const sx=stops.get(X); if(!sx) continue;
+      const n1=i-o.seq;
+      for(const {stopId:Y,dist} of nearbyStops(sx.lat,sx.lng,XFER_WALK)){
+        const prev=reach.get(Y);
+        const cost=n1*MIN_PER_STOP + dist/WALK_MPM;
+        if(!prev || cost < prev.n1*MIN_PER_STOP + prev.walk/WALK_MPM) reach.set(Y,{x:X,n1,walk:dist});
+      }
+    }
     for(const [rk2,dList] of dRoutes){
       const r2info=rkParts(rk2);
       if(r1info.route===r2info.route) continue;
       if(directRoutes.has(r2info.route)) continue; // 2nd leg route is already direct
-      const seq2=routeSeq.get(rk2);
+      const list2=routeStopList.get(rk2);
       const d=dList.reduce((a,b)=>a.dist<b.dist?a:b);
-      // find best interchange X on rk1 (after o.seq) that rk2 serves (before d.seq)
-      let bestX=null;
-      for(let i=o.seq+1;i<list1.length;i++){
-        const X=list1[i];
-        if(seq2.has(X)){
-          const jx=seq2.get(X);
-          if(jx < d.seq){
-            const n1=i-o.seq, n2=d.seq-jx, tot=n1+n2;
-            if(!bestX || tot<bestX.tot) bestX={X,jx,n1,n2,tot,i};
-          }
-        }
+      // earliest+cheapest stop Y on rk2 (before d.seq) that we can reach from rk1
+      let best=null;
+      for(let j=0;j<d.seq;j++){
+        const Y=list2[j]; const r=reach.get(Y); if(!r) continue;
+        const n2=d.seq-j;
+        const cost=r.n1*MIN_PER_STOP + r.walk/WALK_MPM + n2*MIN_PER_STOP;
+        if(!best || cost<best.cost) best={Y, x:r.x, n1:r.n1, n2, walk:r.walk, cost};
       }
-      if(bestX){
+      if(best){
         options.push({type:"transfer", legs:[
-          {kind:"bus", rk:rk1, board:o.stopId, alight:bestX.X, nStops:bestX.n1, walkBoard:o.dist, walkAlight:0},
-          {kind:"bus", rk:rk2, board:bestX.X, alight:d.stopId, nStops:bestX.n2, walkBoard:0, walkAlight:d.dist}
-        ], xferStop:bestX.X});
+          {kind:"bus", rk:rk1, board:o.stopId, alight:best.x, nStops:best.n1, walkBoard:o.dist, walkAlight:best.walk},
+          {kind:"bus", rk:rk2, board:best.Y, alight:d.stopId, nStops:best.n2, walkBoard:0, walkAlight:d.dist}
+        ], xferStop:best.Y, xferWalk:best.walk});
       }
     }
   }
@@ -541,7 +573,11 @@ function renderOptions(options){
       const metaLine=`${etaText(l.etaList)} · ride ~${l.nStops} stops (${Math.round(l.nStops*MIN_PER_STOP)} min)`;
       legsHtml+=legRow("bus", title, metaLine, true);
       if(i<o.legs.length-1){
-        legsHtml+=legRow("walk", `Transfer at ${stopName(l.alight)}`, `change here`, false);
+        const next=o.legs[i+1]; const w=l.walkAlight||0;
+        const tMeta = (next.board!==l.alight && w>5)
+          ? `walk ${walkMin(w)} min (${fmtDist(w)}) to ${stopName(next.board)}`
+          : `change here`;
+        legsHtml+=legRow("walk", `Transfer at ${stopName(l.alight)}`, tMeta, false);
       }
     });
     const lastWalk=o.legs[o.legs.length-1].walkAlight;
