@@ -1,0 +1,12 @@
+# OS junk
+.DS_Store
+Thumbs.db
+*.log
+
+# Node / build (future)
+node_modules/
+.vercel/
+
+# Heavy fare/geo datasets — keep these on Synology, NOT in the repo
+/data/
+*.csv.gz
