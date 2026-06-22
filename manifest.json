@@ -1,0 +1,14 @@
+{
+  "name": "KMB Brain",
+  "short_name": "KMB Brain",
+  "description": "Hong Kong KMB bus route planner with live ETA.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#9E2A20",
+  "theme_color": "#A62F22",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

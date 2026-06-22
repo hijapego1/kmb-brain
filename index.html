@@ -7,7 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="KMB Brain">
 <meta name="theme-color" content="#A62F22">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%23C0392B'/%3E%3Ctext x='50%25' y='62%25' font-size='110' text-anchor='middle' fill='white' font-family='Arial'%3E%F0%9F%9A%8C%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
 <title>KMB Brain — HK Bus Planner</title>
 <style>
   :root{
@@ -90,30 +92,58 @@
   .progress{height:6px; background:var(--line); border-radius:6px; overflow:hidden; margin:8px 0}
   .progress > i{display:block; height:100%; background:var(--kmb); width:0%; transition:width .3s}
   .hint{font-size:12px;color:var(--muted);margin:2px 4px 0}
+  .hbtns{display:flex;gap:8px;flex:0 0 auto}
+  .hbtn{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.55);border-radius:10px;padding:6px 11px;font-size:14px;font-weight:800;cursor:pointer}
+  /* welcome / settings overlay */
+  .welcome{position:fixed;inset:0;z-index:100;background:rgba(20,10,8,.55);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;padding:18px}
+  .welcome-card{background:var(--card);border-radius:22px;max-width:460px;width:100%;padding:22px 20px 20px;
+    max-height:92vh;overflow-y:auto;box-shadow:0 24px 70px rgba(0,0,0,.4)}
+  .w-emoji{font-size:40px;text-align:center;line-height:1}
+  .welcome-card h2{margin:8px 0 2px;text-align:center;font-size:21px;font-weight:850}
+  .welcome-card .w-sub{margin:0 0 14px;text-align:center;font-size:13px;color:var(--muted)}
+  .w-section{margin:16px 0}
+  .w-label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:0 2px 8px}
+  .w-langs{display:flex;gap:10px}
+  .w-lang{flex:1;padding:14px;border:2px solid var(--line);border-radius:14px;background:#fff;font-size:16px;font-weight:700;cursor:pointer;color:var(--ink)}
+  .w-lang.sel{border-color:var(--kmb);background:#fdecea;color:var(--kmb)}
+  .w-tiers{display:flex;flex-direction:column;gap:10px}
+  .w-tier{display:flex;align-items:center;gap:13px;text-align:left;padding:13px 14px;border:2px solid var(--line);border-radius:14px;background:#fff;cursor:pointer;color:var(--ink)}
+  .w-tier.sel{border-color:var(--kmb);background:#fdecea}
+  .w-tier-emo{font-size:26px;flex:0 0 auto}
+  .w-tier-name{font-weight:800;font-size:15px}
+  .w-tier-desc{display:block;font-weight:500;font-size:12.5px;color:var(--muted);margin-top:1px}
+  .w-tier .w-tier-txt{display:flex;flex-direction:column}
 </style>
 </head>
 <body>
 <header>
-  <div class="wrap" style="padding:0">
-    <h1>🚌 KMB Brain</h1>
-    <p>HK bus route planner · live KMB ETA · Phase 1+2</p>
+  <div class="wrap" style="padding:0; display:flex; align-items:flex-start; justify-content:space-between; gap:10px">
+    <div>
+      <h1>🚌 KMB Brain</h1>
+      <p id="subtitle">HK bus route planner · live KMB ETA · Phase 1+2</p>
+    </div>
+    <div class="hbtns">
+      <button id="setBtn" class="hbtn" title="Settings">⚙</button>
+      <button id="langBtn" class="hbtn" title="Switch language">中</button>
+    </div>
   </div>
 </header>
 
 <div class="wrap">
   <div class="card" id="searchCard">
     <div class="field">
-      <label>From</label>
+      <label id="lblFrom">From</label>
       <div class="row">
-        <input type="text" id="fromIn" placeholder="Sai Kung, or 📍 use my location" autocomplete="off">
+        <input type="text" id="fromIn" placeholder="" autocomplete="off">
         <button class="gps" id="gpsBtn" title="Use my location">📍</button>
       </div>
       <div class="suggest" id="fromSg"></div>
     </div>
     <div class="swap"><button id="swapBtn" title="Swap">⇅</button></div>
     <div class="field">
-      <label>To</label>
-      <input type="text" id="toIn" placeholder="TST, Mong Kok, a stop name…" autocomplete="off">
+      <label id="lblTo">To</label>
+      <input type="text" id="toIn" placeholder="" autocomplete="off">
       <div class="suggest" id="toSg"></div>
     </div>
     <button class="go" id="goBtn">Plan my trip</button>
@@ -123,9 +153,30 @@
   <div id="status" class="status"></div>
   <div id="results"></div>
 
-  <div class="footer">
-    Data: <a href="https://data.gov.hk/en-data/dataset/hk-td-tis_21-etakmb" target="_blank">KMB open data (Transport Dept)</a>.
-    Times are estimates; ETA is live. KMB / Long Win only · max 1 transfer (MVP).
+  <div class="footer" id="footer"></div>
+</div>
+
+<div id="welcome" class="welcome" style="display:none">
+  <div class="welcome-card">
+    <div class="w-emoji">🚌</div>
+    <h2 id="wTitle">Welcome to KMB Brain</h2>
+    <p class="w-sub" id="wSub">Quick setup — change anytime with ⚙</p>
+    <div class="w-section">
+      <div class="w-label" id="wLangLabel">Language</div>
+      <div class="w-langs">
+        <button class="w-lang" data-lang="en">English</button>
+        <button class="w-lang" data-lang="zh">中文</button>
+      </div>
+    </div>
+    <div class="w-section">
+      <div class="w-label" id="wWalkLabel">How far will you walk to change buses?</div>
+      <div class="w-tiers">
+        <button class="w-tier" data-tier="stopper"><span class="w-tier-emo">🧍</span><span class="w-tier-txt"><span class="w-tier-name" data-wk="stopper-n"></span><span class="w-tier-desc" data-wk="stopper-d"></span></span></button>
+        <button class="w-tier" data-tier="mild"><span class="w-tier-emo">🚶</span><span class="w-tier-txt"><span class="w-tier-name" data-wk="mild-n"></span><span class="w-tier-desc" data-wk="mild-d"></span></span></button>
+        <button class="w-tier" data-tier="moon"><span class="w-tier-emo">🌝</span><span class="w-tier-txt"><span class="w-tier-name" data-wk="moon-n"></span><span class="w-tier-desc" data-wk="moon-d"></span></span></button>
+      </div>
+    </div>
+    <button class="go" id="wStart">Start</button>
   </div>
 </div>
 
@@ -140,12 +191,24 @@ const KMB = "/v1/transport/kmb";          // path prefix on the gov API
 
 // ---- tunables (the "feel" of the planner) ----
 const WALK_MPM   = 80;    // walking speed, metres/minute (~4.8 km/h)
-const MAX_WALK   = 800;   // max metres to a boarding/alighting stop
 const NEAR_N     = 6;     // how many candidate stops per end
 const MIN_PER_STOP = 1.8; // estimated minutes of riding per stop
 const ASSUMED_WAIT = 6;   // assumed wait (min) before we have live ETA
-const XFER_WALK  = 250;   // max metres to walk between two stops at an interchange
-const MAX_ROUTES_PER_END = 100; // cap to keep transfer search snappy
+const MAX_TRANSFERS = 5;  // up to 5 transfers (6 bus legs) in the search
+// Walk tolerance is user-chosen (welcome screen). These two are set by the tier:
+let MAX_WALK  = 700;      // max metres to a boarding/alighting stop
+let XFER_WALK = 300;      // max metres to walk between stops at an interchange
+const WALK_TIERS = {
+  stopper: { xfer:100,  walk:400  },   // 🧍 same stop only
+  mild:    { xfer:300,  walk:700  },   // 🚶 a short hop
+  moon:    { xfer:1000, walk:1200 },   // 🌝 happy to stroll
+};
+let walkTier = localStorage.getItem("kmbWalk") || "mild";
+function applyWalkTier(tier){
+  if(!WALK_TIERS[tier]) tier="mild";
+  walkTier=tier; XFER_WALK=WALK_TIERS[tier].xfer; MAX_WALK=WALK_TIERS[tier].walk;
+  localStorage.setItem("kmbWalk",tier);
+}
 const TOP_SHOW   = 3;     // options to display
 const TOP_ETA    = 6;     // options to fetch live ETA for
 
@@ -169,6 +232,23 @@ const GAZ = {
   "lai chi kok":[22.3370,114.1480],"cheung sha wan":[22.3360,114.1560],"to kwa wan":[22.3170,114.1880],
   "kowloon station":[22.3040,114.1610],"west kowloon":[22.3040,114.1610],"olympic":[22.3175,114.1605],
   "tai kok tsui":[22.3240,114.1610],"clear water bay":[22.2840,114.2980],
+  // Chinese aliases (same coords) so 中文 input resolves
+  "尖沙咀":[22.2976,114.1722],"尖沙嘴":[22.2976,114.1722],"西貢":[22.3815,114.2705],
+  "旺角":[22.3193,114.1694],"中環":[22.2820,114.1588],"銅鑼灣":[22.2800,114.1850],
+  "觀塘":[22.3120,114.2260],"沙田":[22.3820,114.1880],"鑽石山":[22.3400,114.2010],
+  "彩虹":[22.3350,114.2090],"九龍塘":[22.3370,114.1760],"荃灣":[22.3710,114.1140],
+  "元朗":[22.4445,114.0220],"屯門":[22.3910,113.9770],"紅磡":[22.3030,114.1820],
+  "黃大仙":[22.3420,114.1940],"樂富":[22.3380,114.1870],"九龍灣":[22.3230,114.2130],
+  "牛頭角":[22.3150,114.2190],"藍田":[22.3070,114.2360],"將軍澳":[22.3080,114.2600],
+  "寶琳":[22.3220,114.2580],"坑口":[22.3160,114.2640],"機場":[22.3160,113.9360],
+  "天水圍":[22.4580,114.0040],"深水埗":[22.3300,114.1620],"太子":[22.3250,114.1685],
+  "佐敦":[22.3050,114.1715],"油麻地":[22.3130,114.1705],"北角":[22.2910,114.2000],
+  "灣仔":[22.2790,114.1730],"金鐘":[22.2790,114.1645],"堅尼地城":[22.2810,114.1290],
+  "香港仔":[22.2480,114.1550],"葵涌":[22.3570,114.1310],"葵芳":[22.3570,114.1280],
+  "大埔":[22.4510,114.1640],"粉嶺":[22.4920,114.1390],"上水":[22.5010,114.1280],
+  "馬鞍山":[22.4250,114.2310],"荔枝角":[22.3370,114.1480],"長沙灣":[22.3360,114.1560],
+  "土瓜灣":[22.3170,114.1880],"九龍站":[22.3040,114.1610],"大角咀":[22.3240,114.1610],
+  "清水灣":[22.2840,114.2980],
 };
 
 // ---- state ----
@@ -179,6 +259,81 @@ let stopRoutes = new Map();   // stopId -> Set(rk)
 let routeMeta = new Map();    // rk -> {route,bound,st,orig,dest}
 let ready = false;
 let fromSel = null, toSel = null; // {lat,lng,label}
+let lastOptions = null;           // last results, for re-render on language switch
+
+// ---- i18n (Mix tone: mostly 繁體, a few Cantonese touches) ----
+let lang = localStorage.getItem("kmbLang") || "en";
+const T = {
+  en:{
+    subtitle:"HK bus route planner · live KMB ETA · Phase 1+2",
+    from:"From", to:"To",
+    phFrom:"Sai Kung, or 📍 use my location", phTo:"TST, Mong Kok, a stop name…",
+    go:"Plan my trip", btn:"中",
+    footer:'Data: <a href="https://data.gov.hk/en-data/dataset/hk-td-tis_21-etakmb" target="_blank">KMB open data (Transport Dept)</a>. Times are estimates; ETA is live. KMB / Long Win only · up to 5 transfers.',
+    waking:"Waking up the KMB brain…", cached:"Loading cached KMB data…",
+    dlStops:"Downloading KMB stops…", dlRoutes:"Downloading KMB routes…",
+    dlMap:"Downloading route map (one-time, biggest file)…", building:"Building the KMB brain…",
+    ready:(s,r)=>`Ready · ${s} stops · ${r} route directions loaded.`,
+    loadFail:(m)=>`Load failed at — ${m}`, loadHint:"Tap reload ↻ at the top. If it keeps failing on the same step, screenshot this and send it.",
+    searching:"Searching routes…", gettingEta:"Getting live ETA…",
+    noOrig:()=>`No KMB stop within ${MAX_WALK}m of your start point.`,
+    noDest:()=>`No KMB stop within ${MAX_WALK}m of your destination.`,
+    noCombo:"No KMB route or 1-transfer combo found. Try a nearby district name.",
+    badFrom:'Couldn\'t place your start point. Try a district like "Sai Kung" or 📍.',
+    badTo:'Couldn\'t place your destination. Try a district like "TST".',
+    stillLoading:"Still loading data…",
+    best:"Best now", direct:"Direct", xfers:(n)=>`${n} transfer${n>1?"s":""}`,
+    walkTo:(n)=>`Walk to ${n}`, walkDest:"Walk to destination", changeHere:"change here",
+    transferAt:(n)=>`Transfer at ${n}`, walkToBoard:(m,d,n)=>`walk ${m} min (${d}) to ${n}`,
+    towards:(d)=>`towards ${d}`, ride:(n,m)=>`ride ~${n} stops (${m} min)`,
+    noEta:"no live ETA", etaSoon:"live in a sec", nowTxt:"now", next:(n)=>`next ${n}`, then:(r)=>`then ${r} min`,
+    min:"min", summary:(f,tt,n)=>`${f} → ${tt} · live ETA · top ${TOP_SHOW} of ${n} options`,
+    summaryEst:(f,tt)=>`${f} → ${tt} · (live ETA unavailable, showing estimates)`,
+    district:"District", kmbStop:"KMB stop", locating:"📍 Locating…", myLoc:"My location",
+  },
+  zh:{
+    subtitle:"香港巴士路線規劃 · KMB 實時班次 · 第 1+2 階段",
+    from:"由", to:"去",
+    phFrom:"西貢，或 📍 用我位置", phTo:"尖沙咀、旺角、或車站名…",
+    go:"幫我計路線", btn:"EN",
+    footer:'資料：<a href="https://data.gov.hk/en-data/dataset/hk-td-tis_21-etakmb" target="_blank">KMB 開放數據（運輸署）</a>。時間為估算，班次為實時。只限 KMB／龍運 · 最多轉 5 程。',
+    waking:"喚醒緊個 KMB 大腦…", cached:"載入緊已存資料…",
+    dlStops:"下載緊巴士站…", dlRoutes:"下載緊路線…",
+    dlMap:"下載緊路線地圖（一次性，最大個檔）…", building:"砌緊個 KMB 大腦…",
+    ready:(s,r)=>`準備好喇 · ${s} 個站 · ${r} 條路線方向`,
+    loadFail:(m)=>`載入失敗 — ${m}`, loadHint:"撳上面個 ↻ 重新載入。如果同一步一直失敗，截圖畀我。",
+    searching:"搵緊路線…", gettingEta:"攞緊實時班次…",
+    noOrig:()=>`起點 ${MAX_WALK} 米內無 KMB 巴士站。`,
+    noDest:()=>`目的地 ${MAX_WALK} 米內無 KMB 巴士站。`,
+    noCombo:"搵唔到 KMB 直達或轉一程嘅組合。試下打附近嘅地區名。",
+    badFrom:"認唔到你個起點。試下打地區名，例如「西貢」，或撳 📍。",
+    badTo:"認唔到你個目的地。試下打地區名，例如「尖沙咀」。",
+    stillLoading:"仲 load 緊資料…",
+    best:"最佳", direct:"直達", xfers:(n)=>`轉 ${n} 程`,
+    walkTo:(n)=>`步行去 ${n}`, walkDest:"步行去目的地", changeHere:"喺度轉車",
+    transferAt:(n)=>`喺 ${n} 轉車`, walkToBoard:(m,d,n)=>`行 ${m} 分鐘（${d}）去 ${n}`,
+    towards:(d)=>`往 ${d}`, ride:(n,m)=>`搭 ~${n} 個站（${m} 分鐘）`,
+    noEta:"暫無實時班次", etaSoon:"即將更新", nowTxt:"即將到", next:(n)=>`下班 ${n}`, then:(r)=>`之後 ${r} 分鐘`,
+    min:"分鐘", summary:(f,tt,n)=>`${f} → ${tt} · 實時班次 · ${n} 個方案中頭 ${TOP_SHOW} 個`,
+    summaryEst:(f,tt)=>`${f} → ${tt} ·（實時班次暫時攞唔到，顯示估算）`,
+    district:"地區", kmbStop:"KMB 車站", locating:"📍 定位緊…", myLoc:"我嘅位置",
+  },
+};
+function t(k,...a){ const v=(T[lang]&&T[lang][k]!=null)?T[lang][k]:T.en[k]; return typeof v==="function"?v(...a):v; }
+
+// ---- welcome / first-run setup strings ----
+const WTXT = {
+  en:{ title:"Welcome to KMB Brain 🚌", sub:"Quick setup — change anytime with ⚙", lang:"Language",
+       walk:"How far will you walk to change buses?", start:"Start",
+       "stopper-n":"Stopper",     "stopper-d":"Same stop only · ≤100m",
+       "mild-n":"Mild walker",    "mild-d":"A short hop · ≤300m",
+       "moon-n":"Moon walker",    "moon-d":"Happy to stroll · up to 1km" },
+  zh:{ title:"歡迎用 KMB Brain 🚌", sub:"快速設定 — 隨時撳 ⚙ 改", lang:"語言",
+       walk:"轉車願意行幾遠？", start:"開始",
+       "stopper-n":"原地黨", "stopper-d":"淨係同一個站 · ≤100米",
+       "mild-n":"輕鬆行",   "mild-d":"行少少 · ≤300米",
+       "moon-n":"散步王",   "moon-d":"行下都得 · 最多 1 公里" },
+};
 
 // rk helpers
 const mkRk = (route,bound,st) => route+"|"+bound+"|"+st;
@@ -204,10 +359,11 @@ function buildGrid(){
     grid.get(k).push(id);
   }
 }
-// stops within radiusM of (lat,lng): scan this cell + 8 neighbours
+// stops within radiusM of (lat,lng): scan enough grid rings to cover the radius
 function nearbyStops(lat,lng,radiusM){
   const ci=Math.floor(lat/CELL), cj=Math.floor(lng/CELL), out=[];
-  for(let di=-1;di<=1;di++) for(let dj=-1;dj<=1;dj++){
+  const rings=Math.max(1, Math.ceil(radiusM/240)); // CELL ≈ 240–275m, so this covers the radius
+  for(let di=-rings;di<=rings;di++) for(let dj=-rings;dj<=rings;dj++){
     const arr=grid.get((ci+di)+","+(cj+dj)); if(!arr) continue;
     for(const id of arr){ const s=stops.get(id); const d=haversine(lat,lng,s.lat,s.lng); if(d<=radiusM) out.push({stopId:id,dist:d}); }
   }
@@ -272,7 +428,8 @@ function buildIndexes(rawStops, rawRouteStops, rawRoutes){
   }
   for(const r of rawRoutes){
     routeMeta.set(mkRk(r.route, r.bound, String(r.service_type)),
-      {route:r.route, bound:r.bound, st:String(r.service_type), orig:r.orig_en, dest:r.dest_en});
+      {route:r.route, bound:r.bound, st:String(r.service_type),
+       orig:r.orig_en, dest:r.dest_en, origTc:r.orig_tc, destTc:r.dest_tc});
   }
   // route-stop comes pre-sorted by route/bound/seq but we sort to be safe
   const tmp = new Map();
@@ -298,19 +455,19 @@ function buildIndexes(rawStops, rawRouteStops, rawRoutes){
 async function ensureData(onProg){
   const meta = await idbGet("meta");
   if(meta && meta.date === hkToday() && meta.v === 3){
-    onProg("Loading cached KMB data…", 40);
+    onProg(t("cached"), 40);
     const [rs,rss,rr] = await Promise.all([idbGet("stops"),idbGet("routeStops"),idbGet("routes")]);
     if(rs && rss && rr){ buildIndexes(rs,rss,rr); onProg("",100); ready=true; return; }
   }
-  onProg("Downloading KMB stops…", 15);
+  onProg(t("dlStops"), 15);
   const sJson = await fetchKmb(KMB+"/stop", "stops list");
   await sleep(250);
-  onProg("Downloading KMB routes…", 35);
+  onProg(t("dlRoutes"), 35);
   const rJson = await fetchKmb(KMB+"/route", "routes list");
   await sleep(250);
-  onProg("Downloading route map (one-time, biggest file)…", 55);
+  onProg(t("dlMap"), 55);
   const rsJson = await fetchKmb(KMB+"/route-stop", "route-stop map");
-  onProg("Building the KMB brain…", 80);
+  onProg(t("building"), 80);
   buildIndexes(sJson.data, rsJson.data, rJson.data);
   // cache raw
   idbSet("stops", sJson.data); idbSet("routes", rJson.data);
@@ -322,29 +479,33 @@ async function ensureData(onProg){
 //  RESOLVE TEXT -> COORDS  (gazetteer + stop-name search)
 // ============================================================
 function resolveText(text){
-  const q = text.trim().toLowerCase();
+  const raw = text.trim(); const q = raw.toLowerCase();
   if(!q) return null;
-  if(GAZ[q]) return {lat:GAZ[q][0], lng:GAZ[q][1], label:title(text)};
-  // partial gazetteer
-  for(const k in GAZ){ if(k.startsWith(q) || q.startsWith(k)) return {lat:GAZ[k][0],lng:GAZ[k][1],label:title(k)}; }
-  // stop-name search: average the matching stops' coords (cluster centre)
-  const m=[]; for(const [id,s] of stops){ if(s.name.toLowerCase().includes(q)) m.push(s); if(m.length>=8) break; }
+  if(GAZ[q]) return {lat:GAZ[q][0], lng:GAZ[q][1], label: /[a-z]/.test(q)?title(raw):raw};
+  // partial gazetteer (works for English and Chinese keys)
+  for(const k in GAZ){ if(k.startsWith(q) || q.startsWith(k)) return {lat:GAZ[k][0],lng:GAZ[k][1],label: /[a-z]/.test(k)?title(k):k}; }
+  // stop-name search (English OR Chinese): average matching stops' coords (cluster centre)
+  const m=[]; for(const [id,s] of stops){ if(s.name.toLowerCase().includes(q) || (s.nameTc && s.nameTc.includes(raw))) m.push(s); if(m.length>=8) break; }
   if(m.length){
     const lat=m.reduce((a,s)=>a+s.lat,0)/m.length, lng=m.reduce((a,s)=>a+s.lng,0)/m.length;
-    return {lat,lng,label:m[0].name};
+    return {lat,lng,label: lang==="zh"?(m[0].nameTc||m[0].name):m[0].name};
   }
   return null;
 }
 function title(s){return s.replace(/\b\w/g,c=>c.toUpperCase());}
 
-// suggestions: gazetteer + top stop names
+// suggestions: gazetteer + top stop names (English or Chinese)
 function suggestList(text){
-  const q=text.trim().toLowerCase(); if(q.length<1) return [];
+  const raw=text.trim(); const q=raw.toLowerCase(); if(q.length<1) return [];
   const out=[];
-  for(const k in GAZ){ if(k.includes(q)){ out.push({ic:"📍",label:title(k),sub:"District",lat:GAZ[k][0],lng:GAZ[k][1]}); } if(out.length>=5)break; }
+  for(const k in GAZ){ if(k.includes(q)){ out.push({ic:"📍",label:/[a-z]/.test(k)?title(k):k,sub:t("district"),lat:GAZ[k][0],lng:GAZ[k][1]}); } if(out.length>=5)break; }
   if(ready){
     for(const [id,s] of stops){
-      if(s.name.toLowerCase().includes(q)){ out.push({ic:"🚏",label:s.name,sub:"KMB stop · "+s.nameTc,lat:s.lat,lng:s.lng}); }
+      if(s.name.toLowerCase().includes(q) || (s.nameTc && s.nameTc.includes(raw))){
+        const label = lang==="zh"?(s.nameTc||s.name):s.name;
+        const other = lang==="zh"?s.name:s.nameTc;
+        out.push({ic:"🚏",label,sub:t("kmbStop")+" · "+other,lat:s.lat,lng:s.lng});
+      }
       if(out.length>=9) break;
     }
   }
@@ -380,93 +541,119 @@ function routesForStops(cands){ // Map rk -> {stopId,dist,seq} best (closest) pe
   return m;
 }
 
+// Round-based multi-transfer search (RAPTOR-style). Each "round" = one more bus
+// trip. arr[k] = cheapest cost (estimated minutes from origin) to reach a stop
+// using at most k bus trips; par[k] records how, for path reconstruction.
 function plan(originLL, destLL){
   const oCands = nearestStops(originLL.lat,originLL.lng,MAX_WALK,NEAR_N);
   const dCands = nearestStops(destLL.lat,destLL.lng,MAX_WALK,NEAR_N);
-  if(!oCands.length) return {error:"No KMB stop within "+MAX_WALK+"m of your start point."};
-  if(!dCands.length) return {error:"No KMB stop within "+MAX_WALK+"m of your destination."};
+  if(!oCands.length) return {error:t("noOrig")};
+  if(!dCands.length) return {error:t("noDest")};
 
-  // map of all (rk -> best orig stop) and (rk -> best dest stop); but a route may pass
-  // multiple candidate stops, and we need orig.seq < dest.seq, so keep full lists.
-  const oByRoute=multiRouteStops(oCands), dByRoute=multiRouteStops(dCands);
+  const K = MAX_TRANSFERS + 1;            // max bus legs
+  const destWalkM = new Map();            // dest candidate stopId -> walk metres to destination
+  for(const c of dCands) destWalkM.set(c.stopId, c.dist);
 
-  const options=[];
+  const arr=[new Map()], par=[new Map()]; // arr[k]: stopId->cost(min); par[k]: stopId->parent
+  for(const c of oCands){
+    const w=c.dist/WALK_MPM;
+    if(!arr[0].has(c.stopId) || w<arr[0].get(c.stopId)){ arr[0].set(c.stopId,w); par[0].set(c.stopId,{via:"origin",walkM:c.dist}); }
+  }
+  let marked=new Set(arr[0].keys());
 
-  // ---- DIRECT ----
-  for(const [rk, oList] of oByRoute){
-    const dList=dByRoute.get(rk); if(!dList) continue;
-    let best=null;
-    for(const o of oList) for(const d of dList){
-      if(o.seq < d.seq){
-        const nStops=d.seq-o.seq;
-        const cost=o.dist + d.dist + nStops*MIN_PER_STOP*WALK_MPM; // metres-equivalent for picking
-        if(!best || cost<best.cost) best={o,d,nStops,cost};
+  for(let k=1;k<=K;k++){
+    arr[k]=new Map(arr[k-1]); par[k]=new Map(par[k-1]);
+    const improved=new Set();
+    const routesToScan=new Set();
+    for(const sid of marked){ const set=stopRoutes.get(sid); if(set) for(const rk of set) routesToScan.add(rk); }
+    // ride each candidate route once, boarding at the cheapest marked stop seen so far
+    for(const rk of routesToScan){
+      const list=routeStopList.get(rk);
+      let boardCost=Infinity, boardStop=null, boardSeq=-1;
+      for(let i=0;i<list.length;i++){
+        const sid=list[i];
+        if(boardStop!==null){
+          const cand=boardCost + ASSUMED_WAIT + (i-boardSeq)*MIN_PER_STOP;
+          if(cand < (arr[k].get(sid) ?? Infinity)){
+            arr[k].set(sid,cand);
+            par[k].set(sid,{via:"board",rk,boardStop,boardSeq,alightSeq:i});
+            improved.add(sid);
+          }
+        }
+        if(marked.has(sid)){                         // can start a new trip here (from prev round)
+          const c=arr[k-1].get(sid);
+          if(c!=null && c<boardCost){ boardCost=c; boardStop=sid; boardSeq=i; }
+        }
       }
     }
-    if(best){
-      options.push({type:"direct", legs:[
-        {kind:"bus", rk, board:best.o.stopId, alight:best.d.stopId, nStops:best.nStops, walkBoard:best.o.dist, walkAlight:best.d.dist}
-      ]});
+    // foot transfers from stops improved this round (walking adds no trip)
+    const foot=[];
+    for(const sid of improved){
+      const s=stops.get(sid); if(!s) continue;
+      const base=arr[k].get(sid);
+      for(const {stopId:Y,dist} of nearbyStops(s.lat,s.lng,XFER_WALK)){
+        if(Y===sid) continue;
+        const cand=base + dist/WALK_MPM;
+        if(cand < (arr[k].get(Y) ?? Infinity)) foot.push([Y,cand,sid,dist]);
+      }
     }
+    for(const [Y,cand,fromStop,dist] of foot){
+      if(cand < (arr[k].get(Y) ?? Infinity)){
+        arr[k].set(Y,cand); par[k].set(Y,{via:"walk",fromStop,walkM:dist}); improved.add(Y);
+      }
+    }
+    marked=improved;
+    if(!marked.size){ for(let kk=k+1;kk<=K;kk++){ arr[kk]=arr[k]; par[kk]=par[k]; } break; }
   }
 
-  // ---- 1 TRANSFER (interchange at the same stop OR a nearby stop ≤ XFER_WALK) ----
-  const oRoutes=[...oByRoute.entries()].slice(0,MAX_ROUTES_PER_END);
-  const dRoutes=[...dByRoute.entries()].slice(0,MAX_ROUTES_PER_END);
-  // routes that already connect origin->dest directly: any transfer that re-uses
-  // one of these as a leg is dominated (you'd just take that bus the whole way).
-  const directRoutes=new Set(options.map(o=>rkParts(o.legs[0].rk).route));
-  for(const [rk1,oList] of oRoutes){
-    const r1info=rkParts(rk1);
-    if(directRoutes.has(r1info.route)) continue; // 1st leg route is already direct
-    const o=oList.reduce((a,b)=>a.seq<b.seq?a:b); // earliest boarding -> most reachable interchanges
-    const list1=routeStopList.get(rk1);
-    // Build "reach": every stop you can be standing at after riding rk1 and walking ≤XFER_WALK.
-    //   reach[stopId] = { x:<alight stop on rk1>, n1:<stops ridden>, walk:<metres to this stop> }
-    const reach=new Map();
-    const maxI=Math.min(list1.length, o.seq+1+35); // look up to ~35 stops down the line
-    for(let i=o.seq+1;i<maxI;i++){
-      const X=list1[i]; const sx=stops.get(X); if(!sx) continue;
-      const n1=i-o.seq;
-      for(const {stopId:Y,dist} of nearbyStops(sx.lat,sx.lng,XFER_WALK)){
-        const prev=reach.get(Y);
-        const cost=n1*MIN_PER_STOP + dist/WALK_MPM;
-        if(!prev || cost < prev.n1*MIN_PER_STOP + prev.walk/WALK_MPM) reach.set(Y,{x:X,n1,walk:dist});
-      }
-    }
-    for(const [rk2,dList] of dRoutes){
-      const r2info=rkParts(rk2);
-      if(r1info.route===r2info.route) continue;
-      if(directRoutes.has(r2info.route)) continue; // 2nd leg route is already direct
-      const list2=routeStopList.get(rk2);
-      const d=dList.reduce((a,b)=>a.dist<b.dist?a:b);
-      // earliest+cheapest stop Y on rk2 (before d.seq) that we can reach from rk1
-      let best=null;
-      for(let j=0;j<d.seq;j++){
-        const Y=list2[j]; const r=reach.get(Y); if(!r) continue;
-        const n2=d.seq-j;
-        const cost=r.n1*MIN_PER_STOP + r.walk/WALK_MPM + n2*MIN_PER_STOP;
-        if(!best || cost<best.cost) best={Y, x:r.x, n1:r.n1, n2, walk:r.walk, cost};
-      }
-      if(best){
-        options.push({type:"transfer", legs:[
-          {kind:"bus", rk:rk1, board:o.stopId, alight:best.x, nStops:best.n1, walkBoard:o.dist, walkAlight:best.walk},
-          {kind:"bus", rk:rk2, board:best.Y, alight:d.stopId, nStops:best.n2, walkBoard:0, walkAlight:d.dist}
-        ], xferStop:best.Y, xferWalk:best.walk});
-      }
-    }
+  // For each trip-count, the best reachable destination; keep journeys that improve on fewer trips.
+  const bestDestAt=(k)=>{
+    let bStop=null,bTotal=Infinity;
+    for(const c of dCands){ const a=arr[k].get(c.stopId); if(a==null) continue;
+      const tot=a + destWalkM.get(c.stopId)/WALK_MPM; if(tot<bTotal){ bTotal=tot; bStop=c.stopId; } }
+    return bStop?{stop:bStop,total:bTotal}:null;
+  };
+  const journeys=[], seenSig=new Set(); let prevTotal=Infinity;
+  for(let k=1;k<=K;k++){
+    const b=bestDestAt(k); if(!b) continue;
+    if(b.total >= prevTotal-0.01) continue;   // no real gain over a journey with fewer transfers
+    prevTotal=b.total;
+    const legs=reconstruct(b.stop,k,arr,par,destWalkM);
+    if(!legs) continue;
+    const sig=legs.map(l=>l.rk+"@"+l.board).join(">");
+    if(seenSig.has(sig)) continue; seenSig.add(sig);
+    journeys.push({type: legs.length>1?"transfer":"direct", legs});
   }
+  if(!journeys.length) return {error:t("noCombo")};
+  scoreAll(journeys);
+  journeys.sort((a,b)=>a.totalMin-b.totalMin);
+  return {options:journeys};
+}
 
-  if(!options.length) return {error:"No KMB route or 1-transfer combo found. Try a nearby district name."};
-  scoreAll(options);
-  options.sort((a,b)=>a.totalMin-b.totalMin);
-  // de-dup near-identical (same route sequence)
-  const seen=new Set(), uniq=[];
-  for(const o of options){
-    const sig=o.legs.map(l=>rkParts(l.rk).route).join(">");
-    if(seen.has(sig)) continue; seen.add(sig); uniq.push(o);
+// Walk back through the parent pointers to build the leg list for a journey.
+function reconstruct(destStop,K,arr,par,destWalkM){
+  const acts=[]; let stop=destStop, k=K, guard=0;
+  while(guard++<300){
+    const p=par[k].get(stop); if(!p) return null;
+    if(p.via==="origin"){ acts.push({t:"origin",walkM:p.walkM}); break; }
+    if(p.via==="walk"){ acts.push({t:"walk",walkM:p.walkM}); stop=p.fromStop; continue; }
+    if(p.via==="board"){ acts.push({t:"board",rk:p.rk,board:p.boardStop,alight:stop,nStops:p.alightSeq-p.boardSeq}); stop=p.boardStop; k--; if(k<0) return null; continue; }
+    return null;
   }
-  return {options:uniq};
+  acts.reverse();
+  const legs=[]; let pendingWalk=0;
+  for(const a of acts){
+    if(a.t==="origin") pendingWalk=a.walkM;
+    else if(a.t==="walk") pendingWalk+=a.walkM;
+    else if(a.t==="board"){
+      if(legs.length===0) legs.push({kind:"bus",rk:a.rk,board:a.board,alight:a.alight,nStops:a.nStops,walkBoard:pendingWalk,walkAlight:0});
+      else { legs[legs.length-1].walkAlight=pendingWalk; legs.push({kind:"bus",rk:a.rk,board:a.board,alight:a.alight,nStops:a.nStops,walkBoard:0,walkAlight:0}); }
+      pendingWalk=0;
+    }
+  }
+  if(!legs.length) return null;
+  legs[legs.length-1].walkAlight = pendingWalk + (destWalkM.get(destStop)||0);
+  return legs;
 }
 
 function multiRouteStops(cands){ // rk -> [{stopId,dist,seq}] all candidate stops on that route
@@ -546,46 +733,48 @@ const $=id=>document.getElementById(id);
 function fmtDist(m){ return m<1000? Math.round(m)+" m" : (m/1000).toFixed(1)+" km"; }
 function walkMin(m){ return Math.max(1,Math.round(m/WALK_MPM)); }
 function etaText(arr){
-  if(!arr) return '<span class="eta none">— live in a sec</span>';
-  if(!arr.length) return '<span class="eta none">no live ETA</span>';
+  if(!arr) return `<span class="eta none">— ${t("etaSoon")}</span>`;
+  if(!arr.length) return `<span class="eta none">${t("noEta")}</span>`;
   const f=arr[0];
   const cls=f<=2?"soon":"ok";
-  const label = f===0?"now":(f+" min");
+  const label = f===0? t("nowTxt") : t("next", f+" "+t("min"));
   const rest = arr.slice(1).map(x=>x+"").join(", ");
-  return `<span class="eta ${cls}">next ${label}</span>`+(rest?` <span class="pill">then ${rest} min</span>`:"");
+  return `<span class="eta ${cls}">${label}</span>`+(rest?` <span class="pill">${t("then",rest)}</span>`:"");
 }
 
 function renderOptions(options){
+  lastOptions = options;  // remember for re-render on language switch
   const box=$("results"); box.innerHTML="";
-  if(!options.length){ box.innerHTML='<div class="status err">No options found.</div>'; return; }
+  if(!options || !options.length){ return; }
   options.slice(0,TOP_SHOW).forEach((o,idx)=>{
     const el=document.createElement("div"); el.className="opt";
-    const xfer=o.type==="transfer";
-    const badge = xfer? '<span class="badge xfer">1 transfer</span>' : '<span class="badge direct">Direct</span>';
-    const rank = idx===0? '<span class="badge">Best now</span>' : '';
+    const nT=o.legs.length-1;
+    const badge = nT===0 ? `<span class="badge direct">${t("direct")}</span>` : `<span class="badge xfer">${t("xfers",nT)}</span>`;
+    const rank = idx===0? `<span class="badge">${t("best")}</span>` : '';
     let legsHtml="";
     // start walk
     const firstWalk=o.legs[0].walkBoard;
-    legsHtml+=legRow("walk", `Walk to ${stopName(o.legs[0].board)}`, `${walkMin(firstWalk)} min · ${fmtDist(firstWalk)}`, false);
+    legsHtml+=legRow("walk", t("walkTo",stopName(o.legs[0].board)), `${walkMin(firstWalk)} ${t("min")} · ${fmtDist(firstWalk)}`, false);
     o.legs.forEach((l,i)=>{
       const {route}=rkParts(l.rk); const meta=routeMeta.get(l.rk)||{};
-      const title=`<span class="rt">${route}</span>towards ${meta.dest||"—"}`;
-      const metaLine=`${etaText(l.etaList)} · ride ~${l.nStops} stops (${Math.round(l.nStops*MIN_PER_STOP)} min)`;
+      const dest = (lang==="zh" ? (meta.destTc||meta.dest) : meta.dest) || "—";
+      const title=`<span class="rt">${route}</span>${t("towards",dest)}`;
+      const metaLine=`${etaText(l.etaList)} · ${t("ride", l.nStops, Math.round(l.nStops*MIN_PER_STOP))}`;
       legsHtml+=legRow("bus", title, metaLine, true);
       if(i<o.legs.length-1){
         const next=o.legs[i+1]; const w=l.walkAlight||0;
         const tMeta = (next.board!==l.alight && w>5)
-          ? `walk ${walkMin(w)} min (${fmtDist(w)}) to ${stopName(next.board)}`
-          : `change here`;
-        legsHtml+=legRow("walk", `Transfer at ${stopName(l.alight)}`, tMeta, false);
+          ? t("walkToBoard", walkMin(w), fmtDist(w), stopName(next.board))
+          : t("changeHere");
+        legsHtml+=legRow("walk", t("transferAt",stopName(l.alight)), tMeta, false);
       }
     });
     const lastWalk=o.legs[o.legs.length-1].walkAlight;
-    legsHtml+=legRow("walk", `Walk to destination`, `${walkMin(lastWalk)} min · ${fmtDist(lastWalk)}`, false, true);
+    legsHtml+=legRow("walk", t("walkDest"), `${walkMin(lastWalk)} ${t("min")} · ${fmtDist(lastWalk)}`, false, true);
 
     el.innerHTML=`
       <div class="opt-head">${rank}${badge}
-        <span class="time">${Math.round(o.totalMin)}<small> min</small></span></div>
+        <span class="time">${Math.round(o.totalMin)}<small> ${t("min")}</small></span></div>
       <div class="legs">${legsHtml}</div>`;
     box.appendChild(el);
   });
@@ -596,24 +785,73 @@ function legRow(kind,title,meta,isBus,last){
   return `<div class="leg"><div class="rail"><div class="${dotCls}"></div>${line}</div>
     <div class="body"><div class="title">${title}</div><div class="meta">${meta}</div></div></div>`;
 }
-function stopName(id){ const s=stops.get(id); return s? s.name : id; }
+function stopName(id){ const s=stops.get(id); if(!s) return id; return lang==="zh"?(s.nameTc||s.name):s.name; }
 
 // ============================================================
 //  WIRE UP UI
 // ============================================================
 function setStatus(html){ $("status").innerHTML=html; }
 
+function applyLang(){
+  document.documentElement.lang = lang==="zh" ? "zh-HK" : "en";
+  $("subtitle").textContent = t("subtitle");
+  $("lblFrom").textContent  = t("from");
+  $("lblTo").textContent    = t("to");
+  $("fromIn").placeholder   = t("phFrom");
+  $("toIn").placeholder     = t("phTo");
+  $("goBtn").textContent    = t("go");
+  $("footer").innerHTML     = t("footer");
+  $("langBtn").textContent  = t("btn");
+}
+function toggleLang(){
+  lang = (lang==="en") ? "zh" : "en";
+  localStorage.setItem("kmbLang", lang);
+  applyLang();
+  if(lastOptions) renderOptions(lastOptions);
+  else if(ready) setStatus(t("ready", stops.size.toLocaleString(), routeStopList.size.toLocaleString()));
+}
+
+// ---- welcome / settings overlay ----
+let wSelLang, wSelTier;
+function renderWelcome(){
+  const W=WTXT[wSelLang]||WTXT.en;
+  $("wTitle").textContent=W.title; $("wSub").textContent=W.sub;
+  $("wLangLabel").textContent=W.lang; $("wWalkLabel").textContent=W.walk; $("wStart").textContent=W.start;
+  document.querySelectorAll("#welcome [data-wk]").forEach(el=>{ el.textContent=W[el.getAttribute("data-wk")]||""; });
+  document.querySelectorAll(".w-lang").forEach(b=>b.classList.toggle("sel", b.dataset.lang===wSelLang));
+  document.querySelectorAll(".w-tier").forEach(b=>b.classList.toggle("sel", b.dataset.tier===wSelTier));
+}
+function showWelcome(){ wSelLang=lang; wSelTier=walkTier; renderWelcome(); $("welcome").style.display="flex"; }
+function wireWelcome(){
+  document.querySelectorAll(".w-lang").forEach(b=>b.onclick=()=>{ wSelLang=b.dataset.lang; renderWelcome(); });
+  document.querySelectorAll(".w-tier").forEach(b=>b.onclick=()=>{ wSelTier=b.dataset.tier; renderWelcome(); });
+  $("wStart").onclick=()=>{
+    lang=wSelLang; localStorage.setItem("kmbLang",lang);
+    applyWalkTier(wSelTier);
+    localStorage.setItem("kmbSetup","1");
+    applyLang(); $("welcome").style.display="none";
+    if(lastOptions) renderOptions(lastOptions);
+    else if(ready) setStatus(t("ready", stops.size.toLocaleString(), routeStopList.size.toLocaleString()));
+  };
+}
+
 async function init(){
+  applyWalkTier(walkTier);   // apply saved walk tier (or default 'mild')
+  applyLang();
+  wireWelcome();
+  $("setBtn").onclick=showWelcome;
+  if(!localStorage.getItem("kmbSetup")) showWelcome();   // first visit → welcome
   bindSuggest($("fromIn"),$("fromSg"),s=>fromSel=s,"from");
   bindSuggest($("toIn"),$("toSg"),s=>toSel=s,"to");
   $("swapBtn").onclick=()=>{
     const a=$("fromIn").value, b=$("toIn").value; $("fromIn").value=b; $("toIn").value=a;
-    const t=fromSel; fromSel=toSel; toSel=t;
+    const tmp=fromSel; fromSel=toSel; toSel=tmp;
   };
   $("gpsBtn").onclick=useGps;
   $("goBtn").onclick=runPlan;
+  $("langBtn").onclick=toggleLang;
 
-  setStatus('<span class="spin"></span>Waking up the KMB brain…');
+  setStatus(`<span class="spin"></span>${t("waking")}`);
   $("goBtn").disabled=true;
   try{
     await ensureData((msg,pct)=>{
@@ -621,19 +859,19 @@ async function init(){
       setStatus(`<span class="spin"></span>${msg}<div class="progress"><i style="width:${pct}%"></i></div>`);
     });
     $("goBtn").disabled=false;
-    setStatus(`Ready · ${stops.size.toLocaleString()} stops · ${routeStopList.size.toLocaleString()} route directions loaded.`);
+    setStatus(t("ready", stops.size.toLocaleString(), routeStopList.size.toLocaleString()));
   }catch(e){
-    setStatus('<span class="err">Load failed at — '+e.message+'</span><br>'+
-      '<span style="font-size:12px;color:var(--muted)">Tap reload ↻ at the top. If it keeps failing on the same step, screenshot this and send it.</span>');
+    setStatus(`<span class="err">${t("loadFail",e.message)}</span><br>`+
+      `<span style="font-size:12px;color:var(--muted)">${t("loadHint")}</span>`);
   }
 }
 
 function bindSuggest(input, box, onPick, which){
-  let t=null;
+  let tmr=null;
   input.addEventListener("input",()=>{
     if(which==="from") fromSel=null; else toSel=null;
-    clearTimeout(t);
-    t=setTimeout(()=>{
+    clearTimeout(tmr);
+    tmr=setTimeout(()=>{
       const list=suggestList(input.value);
       if(!list.length){ box.classList.remove("show"); box.innerHTML=""; return; }
       box.innerHTML=list.map((s,i)=>`<div class="sg" data-i="${i}"><span class="ic">${s.ic}</span><span><div>${s.label}</div><div class="sub">${s.sub}</div></span></div>`).join("");
@@ -649,10 +887,10 @@ function bindSuggest(input, box, onPick, which){
 
 function useGps(){
   if(!navigator.geolocation){ alert("No geolocation on this device."); return; }
-  $("fromIn").value="📍 Locating…";
+  $("fromIn").value=t("locating");
   navigator.geolocation.getCurrentPosition(p=>{
-    fromSel={lat:p.coords.latitude,lng:p.coords.longitude,label:"My location"};
-    $("fromIn").value="📍 My location";
+    fromSel={lat:p.coords.latitude,lng:p.coords.longitude,label:t("myLoc")};
+    $("fromIn").value="📍 "+t("myLoc");
   },err=>{
     $("fromIn").value="";
     alert("Location failed: "+err.message+"\n(Needs an https:// page — see the hosting note.)");
@@ -660,27 +898,27 @@ function useGps(){
 }
 
 async function runPlan(){
-  if(!ready){ setStatus('<span class="err">Still loading data…</span>'); return; }
-  $("results").innerHTML="";
+  if(!ready){ setStatus(`<span class="err">${t("stillLoading")}</span>`); return; }
+  $("results").innerHTML=""; lastOptions=null;
   const from = fromSel || resolveText($("fromIn").value);
   const to   = toSel   || resolveText($("toIn").value);
   $("resolveHint").textContent="";
-  if(!from){ setStatus('<span class="err">Couldn\'t place your start point. Try a district like "Sai Kung" or 📍.</span>'); return; }
-  if(!to){ setStatus('<span class="err">Couldn\'t place your destination. Try a district like "TST".</span>'); return; }
+  if(!from){ setStatus(`<span class="err">${t("badFrom")}</span>`); return; }
+  if(!to){ setStatus(`<span class="err">${t("badTo")}</span>`); return; }
   $("resolveHint").textContent = `${from.label} → ${to.label}`;
-  setStatus('<span class="spin"></span>Searching routes…');
+  setStatus(`<span class="spin"></span>${t("searching")}`);
 
   // compute (sync) then enrich with live ETA
   const res = plan(from, to);
-  if(res.error){ setStatus('<span class="err">'+res.error+'</span>'); return; }
+  if(res.error){ setStatus(`<span class="err">${res.error}</span>`); return; }
   renderOptions(res.options);                 // instant, with assumed waits
-  setStatus('<span class="spin"></span>Getting live ETA…');
+  setStatus(`<span class="spin"></span>${t("gettingEta")}`);
   try{
     const enriched = await enrichEta(res.options);
     renderOptions(enriched);
-    setStatus(`${from.label} → ${to.label} · live ETA · ${enriched.length>=TOP_SHOW?"top "+TOP_SHOW:enriched.length} of ${res.options.length} options`);
+    setStatus(t("summary", from.label, to.label, res.options.length));
   }catch(e){
-    setStatus(`${from.label} → ${to.label} · (live ETA unavailable, showing estimates)`);
+    setStatus(t("summaryEst", from.label, to.label));
   }
 }
 
