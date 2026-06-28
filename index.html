@@ -211,6 +211,10 @@ function applyWalkTier(tier){
 }
 const TOP_SHOW   = 3;     // options to display
 const TOP_ETA    = 6;     // options to fetch live ETA for
+const NO_BUS_WAIT = 30;   // penalty wait (min) for a leg with no live bus (fallback only)
+const REPLAN_MAX  = 4;    // times to re-plan, excluding routes not running right now
+const GPS_MAX_AGE = 120000; // reuse a GPS fix up to 2 min old (instant + still accurate)
+const GPS_TIMEOUT = 10000;  // give up on a fresh fix after 10s, then fall back
 
 // ---- HK landmark gazetteer (district -> centre coords) ----
 const GAZ = {
@@ -289,7 +293,12 @@ const T = {
     noEta:"no live ETA", etaSoon:"live in a sec", nowTxt:"now", next:(n)=>`next ${n}`, then:(r)=>`then ${r} min`,
     min:"min", summary:(f,tt,n)=>`${f} → ${tt} · live ETA · top ${TOP_SHOW} of ${n} options`,
     summaryEst:(f,tt)=>`${f} → ${tt} · (live ETA unavailable, showing estimates)`,
+    noneRunning:"No live buses on these routes right now — showing scheduled estimates.",
     district:"District", kmbStop:"KMB stop", locating:"📍 Locating…", myLoc:"My location",
+    noGeo:"No geolocation on this device.",
+    lastLoc:(ago)=>`My location · last known, ${ago} ago`,
+    locRetry:(m)=>`Couldn't get your location (${m}). Try again?`,
+    locFail:(m)=>`Location failed: ${m}\n(Needs an https:// page to use GPS.)`,
   },
   zh:{
     subtitle:"香港巴士路線規劃 · KMB 實時班次 · 第 1+2 階段",
@@ -316,7 +325,12 @@ const T = {
     noEta:"暫無實時班次", etaSoon:"即將更新", nowTxt:"即將到", next:(n)=>`下班 ${n}`, then:(r)=>`之後 ${r} 分鐘`,
     min:"分鐘", summary:(f,tt,n)=>`${f} → ${tt} · 實時班次 · ${n} 個方案中頭 ${TOP_SHOW} 個`,
     summaryEst:(f,tt)=>`${f} → ${tt} ·（實時班次暫時攞唔到，顯示估算）`,
+    noneRunning:"呢啲路線而家冇實時班次 — 顯示班次估算。",
     district:"地區", kmbStop:"KMB 車站", locating:"📍 定位緊…", myLoc:"我嘅位置",
+    noGeo:"部機冇定位功能。",
+    lastLoc:(ago)=>`我嘅位置 · 上次定位 ${ago}前`,
+    locRetry:(m)=>`攞唔到你位置（${m}）。再試一次？`,
+    locFail:(m)=>`定位失敗：${m}\n（要 https:// 網頁先用到 GPS。）`,
   },
 };
 function t(k,...a){ const v=(T[lang]&&T[lang][k]!=null)?T[lang][k]:T.en[k]; return typeof v==="function"?v(...a):v; }
@@ -544,7 +558,8 @@ function routesForStops(cands){ // Map rk -> {stopId,dist,seq} best (closest) pe
 // Round-based multi-transfer search (RAPTOR-style). Each "round" = one more bus
 // trip. arr[k] = cheapest cost (estimated minutes from origin) to reach a stop
 // using at most k bus trips; par[k] records how, for path reconstruction.
-function plan(originLL, destLL){
+function plan(originLL, destLL, blocked){
+  blocked = blocked || new Set();           // rk's to skip (not running right now)
   const oCands = nearestStops(originLL.lat,originLL.lng,MAX_WALK,NEAR_N);
   const dCands = nearestStops(destLL.lat,destLL.lng,MAX_WALK,NEAR_N);
   if(!oCands.length) return {error:t("noOrig")};
@@ -568,6 +583,7 @@ function plan(originLL, destLL){
     for(const sid of marked){ const set=stopRoutes.get(sid); if(set) for(const rk of set) routesToScan.add(rk); }
     // ride each candidate route once, boarding at the cheapest marked stop seen so far
     for(const rk of routesToScan){
+      if(blocked.has(rk)) continue;          // skip routes known not to be running now
       const list=routeStopList.get(rk);
       let boardCost=Infinity, boardStop=null, boardSeq=-1;
       for(let i=0;i<list.length;i++){
@@ -687,44 +703,53 @@ function scoreAll(options){
 }
 
 // ============================================================
-//  LIVE ETA (Phase 2) — refine waits, re-rank
+//  LIVE ETA (Phase 2) — refine waits, drop non-running routes, re-rank
 // ============================================================
 async function fetchEtaForStop(stopId){
+  // returns array of rows, or null if the fetch itself failed (so we don't
+  // mistake a network error for "no bus coming")
   try{ const j=await fetchKmb(KMB+"/stop-eta/"+stopId, "eta"); return j.data||[]; }
-  catch(e){ return []; }
+  catch(e){ return null; }
 }
-function etaMinFromRows(rows, rk){
+// For one route (rk) at a stop's ETA rows: upcoming minutes + any service remark.
+function etaInfoFromRows(rows, rk){
   const {route,bound,st}=rkParts(rk);
-  const now=Date.now(); const mins=[];
+  const now=Date.now(); const mins=[]; let rmk="", matched=false;
   for(const r of rows){
-    if(r.route!==route) continue;
-    if(r.dir!==bound) continue;
-    if(String(r.service_type)!==st) continue;
+    if(r.route!==route || r.dir!==bound || String(r.service_type)!==st) continue;
+    matched=true;
+    if(lang==="zh"){ if(!rmk && r.rmk_tc) rmk=r.rmk_tc; } else { if(!rmk && r.rmk_en) rmk=r.rmk_en; }
     if(!r.eta) continue;
     const m=(new Date(r.eta).getTime()-now)/60000;
     if(m>=-1) mins.push(Math.max(0,Math.round(m)));
   }
   mins.sort((a,b)=>a-b);
-  return mins.slice(0,3);
+  return {mins:mins.slice(0,3), rmk, matched};
 }
-async function enrichEta(options){
-  const top=options.slice(0,TOP_ETA);
-  // collect unique boarding stops
+// Fetch ETA for every boarding stop used by these options (cached across re-plans).
+async function fetchEtaInto(options, cache){
   const need=new Set();
-  for(const o of top) for(const l of o.legs) need.add(l.board);
-  const etaMap=new Map();
-  await Promise.all([...need].map(async id=>{ etaMap.set(id, await fetchEtaForStop(id)); }));
-  for(const o of top){
+  for(const o of options) for(const l of o.legs) if(!cache.has(l.board)) need.add(l.board);
+  await Promise.all([...need].map(async id=>{ cache.set(id, await fetchEtaForStop(id)); }));
+}
+// Apply live ETA to each leg.
+//  - real ETA  -> waitMin = next arrival, live
+//  - no ETA    -> noBus flag + heavy penalty wait (route not running now)
+//  - fetch failed (rows null) -> leave as unknown, keep assumed wait
+function applyEta(options, cache){
+  for(const o of options){
     for(const l of o.legs){
-      const arr=etaMinFromRows(etaMap.get(l.board)||[], l.rk);
-      l.etaList=arr;
-      if(arr.length) l.waitMin=arr[0];
+      const rows=cache.get(l.board);
+      if(rows==null){ l.etaList=null; l.noBus=false; continue; }
+      const info=etaInfoFromRows(rows, l.rk);
+      l.rmk=info.rmk;
+      if(info.mins.length){ l.etaList=info.mins; l.waitMin=info.mins[0]; l.noBus=false; }
+      else { l.etaList=[]; l.noBus=true; l.waitMin=NO_BUS_WAIT; }
     }
   }
-  scoreAll(top);
-  top.sort((a,b)=>a.totalMin-b.totalMin);
-  return top;
+  scoreAll(options);
 }
+const sigOf = o => o.legs.map(l=>l.rk+"@"+l.board).join(">");
 
 // ============================================================
 //  RENDER
@@ -847,7 +872,7 @@ async function init(){
     const a=$("fromIn").value, b=$("toIn").value; $("fromIn").value=b; $("toIn").value=a;
     const tmp=fromSel; fromSel=toSel; toSel=tmp;
   };
-  $("gpsBtn").onclick=useGps;
+  $("gpsBtn").onclick=()=>useGps();
   $("goBtn").onclick=runPlan;
   $("langBtn").onclick=toggleLang;
 
@@ -885,16 +910,40 @@ function bindSuggest(input, box, onPick, which){
   input.addEventListener("blur",()=>setTimeout(()=>box.classList.remove("show"),200));
 }
 
-function useGps(){
-  if(!navigator.geolocation){ alert("No geolocation on this device."); return; }
+function saveLastLoc(lat,lng){
+  try{ localStorage.setItem("kmbLastLoc", JSON.stringify({lat,lng,ts:Date.now()})); }catch(e){}
+}
+function getLastLoc(){
+  try{ const o=JSON.parse(localStorage.getItem("kmbLastLoc")); if(o&&isFinite(o.lat)&&isFinite(o.lng)&&o.ts) return o; }catch(e){}
+  return null;
+}
+// (b) ask for a fix up to 2 min old → instant when you just used it, fresh when
+// you've moved. If a fresh fix fails, fall back to the last known spot (clearly
+// labelled with its age). If there's no fallback either, offer to ask again.
+function useGps(retrying){
+  if(!navigator.geolocation){ alert(t("noGeo")); return; }
   $("fromIn").value=t("locating");
-  navigator.geolocation.getCurrentPosition(p=>{
-    fromSel={lat:p.coords.latitude,lng:p.coords.longitude,label:t("myLoc")};
-    $("fromIn").value="📍 "+t("myLoc");
-  },err=>{
-    $("fromIn").value="";
-    alert("Location failed: "+err.message+"\n(Needs an https:// page — see the hosting note.)");
-  },{enableHighAccuracy:true,timeout:10000});
+  navigator.geolocation.getCurrentPosition(
+    p=>{
+      const lat=p.coords.latitude, lng=p.coords.longitude;
+      fromSel={lat,lng,label:t("myLoc")};
+      $("fromIn").value="📍 "+t("myLoc");
+      saveLastLoc(lat,lng);                       // keep for fallback next time
+    },
+    err=>{
+      const last=getLastLoc();                    // fresh fix failed → labelled fallback
+      if(last){
+        const m=Math.max(1,Math.round((Date.now()-last.ts)/60000));
+        fromSel={lat:last.lat,lng:last.lng,label:t("myLoc")};
+        $("fromIn").value="📍 "+t("lastLoc", m+" "+t("min"));
+      }else{
+        $("fromIn").value="";                     // no fallback → offer to ask again
+        if(!retrying && confirm(t("locRetry", err.message))){ useGps(true); return; }
+        alert(t("locFail", err.message));
+      }
+    },
+    {enableHighAccuracy:true, timeout:GPS_TIMEOUT, maximumAge:GPS_MAX_AGE}
+  );
 }
 
 async function runPlan(){
@@ -908,15 +957,54 @@ async function runPlan(){
   $("resolveHint").textContent = `${from.label} → ${to.label}`;
   setStatus(`<span class="spin"></span>${t("searching")}`);
 
-  // compute (sync) then enrich with live ETA
-  const res = plan(from, to);
+  // 1) instant optimistic plan (assumed waits) for fast feedback
+  let res = plan(from, to);
   if(res.error){ setStatus(`<span class="err">${res.error}</span>`); return; }
-  renderOptions(res.options);                 // instant, with assumed waits
+  renderOptions(res.options);
   setStatus(`<span class="spin"></span>${t("gettingEta")}`);
+
+  // 2) live-ETA loop: drop routes with no bus right now, re-plan to surface the
+  //    real alternative (the search keeps only one journey per transfer count,
+  //    so a non-running winner would otherwise hide a perfectly good option).
   try{
-    const enriched = await enrichEta(res.options);
-    renderOptions(enriched);
-    setStatus(t("summary", from.label, to.label, res.options.length));
+    const cache=new Map();      // stopId -> eta rows (or null if fetch failed)
+    const blocked=new Set();    // rk's confirmed not running now
+    const found=new Map();      // sig -> journey whose every leg has a live bus
+    let fetchFailed=false;
+    for(let iter=0; iter<REPLAN_MAX; iter++){
+      await fetchEtaInto(res.options, cache);
+      applyEta(res.options, cache);
+      let addedBlock=false;
+      for(const o of res.options){
+        if(o.legs.some(l=>l.etaList===null)) fetchFailed=true;
+        if(o.legs.every(l=>!l.noBus)){
+          const sig=sigOf(o); if(!found.has(sig)) found.set(sig,o);
+        }else{
+          for(const l of o.legs) if(l.noBus && !blocked.has(l.rk)){ blocked.add(l.rk); addedBlock=true; }
+        }
+      }
+      if(found.size>=TOP_SHOW || !addedBlock) break;
+      const re=plan(from, to, blocked);
+      if(re.error) break;
+      res=re;
+    }
+
+    let finalOptions=[...found.values()];
+    let fallback=false;
+    if(!finalOptions.length){
+      // nothing on the sensible routes is running now → show scheduled estimates, flagged
+      const re=plan(from, to);
+      if(!re.error){ await fetchEtaInto(re.options, cache); applyEta(re.options, cache); finalOptions=re.options; }
+      fallback=true;
+    }
+    if(!finalOptions.length){ setStatus(`<span class="err">${t("noCombo")}</span>`); return; }
+
+    scoreAll(finalOptions);
+    finalOptions.sort((a,b)=>a.totalMin-b.totalMin);
+    renderOptions(finalOptions);
+    if(fetchFailed)   setStatus(t("summaryEst", from.label, to.label));
+    else if(fallback) setStatus(`<span class="err">${t("noneRunning")}</span>`);
+    else              setStatus(t("summary", from.label, to.label, finalOptions.length));
   }catch(e){
     setStatus(t("summaryEst", from.label, to.label));
   }
